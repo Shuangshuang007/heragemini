@@ -681,6 +681,18 @@ export async function GET(request: NextRequest) {
       name: 'get_user_applications',
         description: 'Retrieve user job application history',
       },
+      {
+        name: 'career_transition_advice',
+        description: '💼 CAREER TRANSITION - Get personalized career transition recommendations',
+      },
+      {
+        name: 'career_path_explorer',
+        description: '🗺️ CAREER PATHS - Explore all possible career paths from a job title',
+      },
+      {
+        name: 'career_skill_gap_analysis',
+        description: '📊 SKILL GAP - Analyze skill gaps between two job roles',
+      },
     ],
     mode: HERA_MCP_MODE,
     status: 'healthy',
@@ -1311,6 +1323,86 @@ export async function POST(request: NextRequest) {
               }
             },
             required: ["user_profile", "resume_content"],
+            additionalProperties: false
+          }
+        },
+        {
+          name: "career_transition_advice",
+          description: "🎯 CAREER TRANSITION ADVICE - Get personalized career switch recommendations!\n\n✅ Use this tool when user:\n• Asks 'what careers can I transition to?', 'career change advice', 'what should I do next?'\n• Provides current job title and experience\n• Wants to explore career switch options\n• Mentions career transition, pivot, or change\n\n🎯 This tool provides:\n• Personalized career transition recommendations\n• Skill gap analysis between current and target roles\n• Transition difficulty assessment\n• Actionable career pathway suggestions\n\n📝 Examples:\n• 'I'm a software engineer with 3 years experience, what careers can I transition to?'\n• 'Help me explore career options from product manager'\n• 'What are good career paths for a data analyst?'",
+          inputSchema: {
+            type: "object",
+            properties: {
+              current_job: {
+                type: "string",
+                description: "Current job title"
+              },
+              experience_years: {
+                type: "number",
+                description: "Years of experience"
+              },
+              skills: {
+                type: "array",
+                items: { type: "string" },
+                description: "Optional: List of skills"
+              },
+              industry: {
+                type: "string",
+                description: "Optional: Current industry"
+              },
+              location: {
+                type: "string",
+                description: "Optional: Location preference"
+              }
+            },
+            required: ["current_job", "experience_years"],
+            additionalProperties: false
+          }
+        },
+        {
+          name: "career_path_explorer",
+          description: "🔍 CAREER PATH EXPLORER - Explore all possible career paths from a job title!\n\n✅ Use this tool when user:\n• Asks 'show me all career paths from X', 'what jobs can I transition to from Y'\n• Wants to explore multiple transition options\n• Looking for similarity-based career recommendations\n\n🎯 This tool provides:\n• All possible career transitions from a given job\n• Similarity scores for each transition\n• Shared skills between roles\n• Filtered results by similarity threshold\n\n📝 Examples:\n• 'Show me all career paths from software engineer'\n• 'What jobs can I transition to from product manager?'\n• 'Explore career options from data analyst with 70%+ similarity'",
+          inputSchema: {
+            type: "object",
+            properties: {
+              from_job: {
+                type: "string",
+                description: "Source job title to explore transitions from"
+              },
+              min_similarity: {
+                type: "number",
+                default: 0.5,
+                minimum: 0,
+                maximum: 1,
+                description: "Minimum similarity threshold (0-1)"
+              },
+              limit: {
+                type: "number",
+                default: 20,
+                minimum: 1,
+                maximum: 50,
+                description: "Maximum number of results"
+              }
+            },
+            required: ["from_job"],
+            additionalProperties: false
+          }
+        },
+        {
+          name: "career_skill_gap_analysis",
+          description: "📊 SKILL GAP ANALYSIS - Analyze the skill gap between two job roles!\n\n✅ Use this tool when user:\n• Asks 'what's the skill gap between X and Y', 'what skills do I need to switch to Y'\n• Wants to understand transition requirements\n• Needs specific skills to develop for target role\n\n🎯 This tool provides:\n• Detailed skill gap analysis between two roles\n• Shared skills (what you already have)\n• Skills to learn (what you need to develop)\n• Transition difficulty assessment\n• Estimated time to transition\n\n📝 Examples:\n• 'What's the skill gap between software engineer and data analyst?'\n• 'What skills do I need to become a product manager?'\n• 'Analyze the gap between my current role and business analyst'",
+          inputSchema: {
+            type: "object",
+            properties: {
+              from_job: {
+                type: "string",
+                description: "Source job title"
+              },
+              to_job: {
+                type: "string",
+                description: "Target job title"
+              }
+            },
+            required: ["from_job", "to_job"],
             additionalProperties: false
           }
         },
@@ -3196,6 +3288,183 @@ export async function POST(request: NextRequest) {
                 content: [{
                   type: "text",
                   text: `Failed to tailor resume: ${error.message}`
+                }],
+                isError: false
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+        }
+
+        // ============================================
+        // Tool: career_transition_advice
+        // ============================================
+        else if (name === "career_transition_advice") {
+          const traceId = crypto.randomUUID();
+          const { current_job, experience_years, skills, industry, location } = args;
+
+          console.log('[MCP] career_transition_advice - Input:', { 
+            current_job, 
+            experience_years, 
+            skills, 
+            industry, 
+            location 
+          });
+
+          try {
+            const apiUrl = process.env.CAREER_SWITCH_API_URL || 'http://149.28.175.142:3009';
+            
+            const response = await fetch(`${apiUrl}/api/career/advice`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                currentJob: current_job,
+                experience: experience_years,
+                skills: skills,
+                industry: industry,
+                location: location
+              })
+            });
+
+            if (!response.ok) {
+              throw new Error(`Career API returned ${response.status}`);
+            }
+
+            const data = await response.json();
+            
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{
+                  type: "json",
+                  data: {
+                    content: data
+                  }
+                }],
+                isError: false
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+
+          } catch (error: any) {
+            console.error('[MCP] career_transition_advice error:', error);
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{
+                  type: "text",
+                  text: `Failed to get career transition advice: ${error.message}`
+                }],
+                isError: false
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+        }
+
+        // ============================================
+        // Tool: career_path_explorer
+        // ============================================
+        else if (name === "career_path_explorer") {
+          const traceId = crypto.randomUUID();
+          const { from_job, min_similarity = 0.5, limit = 20 } = args;
+
+          console.log('[MCP] career_path_explorer - Input:', { 
+            from_job, 
+            min_similarity, 
+            limit 
+          });
+
+          try {
+            const apiUrl = process.env.CAREER_SWITCH_API_URL || 'http://149.28.175.142:3009';
+            
+            const response = await fetch(
+              `${apiUrl}/api/career/transitions/${encodeURIComponent(from_job)}?minSimilarity=${min_similarity}&limit=${limit}`
+            );
+
+            if (!response.ok) {
+              throw new Error(`Career API returned ${response.status}`);
+            }
+
+            const data = await response.json();
+            
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{
+                  type: "json",
+                  data: {
+                    content: data
+                  }
+                }],
+                isError: false
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+
+          } catch (error: any) {
+            console.error('[MCP] career_path_explorer error:', error);
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{
+                  type: "text",
+                  text: `Failed to explore career paths: ${error.message}`
+                }],
+                isError: false
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+        }
+
+        // ============================================
+        // Tool: career_skill_gap_analysis
+        // ============================================
+        else if (name === "career_skill_gap_analysis") {
+          const traceId = crypto.randomUUID();
+          const { from_job, to_job } = args;
+
+          console.log('[MCP] career_skill_gap_analysis - Input:', { 
+            from_job, 
+            to_job 
+          });
+
+          try {
+            const apiUrl = process.env.CAREER_SWITCH_API_URL || 'http://149.28.175.142:3009';
+            
+            const response = await fetch(
+              `${apiUrl}/api/career/skill-gap/${encodeURIComponent(from_job)}/${encodeURIComponent(to_job)}`
+            );
+
+            if (!response.ok) {
+              throw new Error(`Career API returned ${response.status}`);
+            }
+
+            const data = await response.json();
+            
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{
+                  type: "json",
+                  data: {
+                    content: data
+                  }
+                }],
+                isError: false
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+
+          } catch (error: any) {
+            console.error('[MCP] career_skill_gap_analysis error:', error);
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{
+                  type: "text",
+                  text: `Failed to analyze skill gap: ${error.message}`
                 }],
                 isError: false
               }
