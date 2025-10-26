@@ -3310,43 +3310,73 @@ export async function POST(request: NextRequest) {
             location 
           });
 
+          // Use Vercel proxy URL if available, otherwise fallback to direct Vultr URL
+          const mcpCareerUrl = process.env.MCP_CAREER_URL || process.env.CAREER_SWITCH_API_URL || 'http://149.28.175.142:3009';
+          
+          // Determine if we're using Vercel proxy or direct API
+          const isVercelProxy = mcpCareerUrl.includes('/api/career-advice');
+          const targetUrl = isVercelProxy ? mcpCareerUrl : `${mcpCareerUrl}/api/career/advice`;
+
+          const requestBody = {
+            mode: "raw", // Use raw mode for Vercel proxy compatibility
+            currentJob: current_job ?? null,
+            experience: experience_years ?? null,
+            skills: skills ?? null,
+            industry: industry ?? null,
+            location: location ?? null,
+          };
+
+          console.info("[MCP→Vercel Proxy] fetch", { traceId, url: targetUrl, body: requestBody });
+
           try {
-            const apiUrl = process.env.CAREER_SWITCH_API_URL || 'http://149.28.175.142:3009';
-            
-            const response = await fetch(`${apiUrl}/api/career/advice`, {
+            const response = await fetch(targetUrl, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                currentJob: current_job,
-                experience: experience_years,
-                skills: skills,
-                industry: industry,
-                location: location
-              })
+              headers: {
+                'Content-Type': 'application/json',
+                'x-trace-id': traceId // Pass trace ID
+              },
+              body: JSON.stringify(requestBody),
             });
 
-            if (!response.ok) {
-              throw new Error(`Career API returned ${response.status}`);
+            console.info("[MCP←Vercel Proxy] resp", { traceId, status: response.status });
+
+            const responseText = await response.text();
+            console.info("[MCP data] Received response", { traceId, len: responseText.length });
+
+            // Attempt to parse JSON, handle non-JSON responses gracefully
+            try {
+              const data = JSON.parse(responseText);
+              
+              return json200({
+                jsonrpc: "2.0",
+                id: body.id ?? null,
+                result: {
+                  content: [{
+                    type: "json",
+                    data: {
+                      content: data
+                    }
+                  }],
+                  isError: false
+                }
+              }, { "X-MCP-Trace-Id": traceId });
+            } catch (parseError) {
+              console.error("[MCP] Failed to parse JSON response:", { traceId, responseText, parseError });
+              return json200({
+                jsonrpc: "2.0",
+                id: body.id ?? null,
+                result: {
+                  content: [{
+                    type: "text",
+                    text: `Error: Invalid JSON response from career service. Status: ${response.status}. Response: ${responseText.substring(0, 200)}`
+                  }],
+                  isError: false
+                }
+              }, { "X-MCP-Trace-Id": traceId });
             }
 
-            const data = await response.json();
-            
-            return json200({
-              jsonrpc: "2.0",
-              id: body.id ?? null,
-              result: {
-                content: [{
-                  type: "json",
-                  data: {
-                    content: data
-                  }
-                }],
-                isError: false
-              }
-            }, { "X-MCP-Trace-Id": traceId });
-
           } catch (error: any) {
-            console.error('[MCP] career_transition_advice error:', error);
+            console.error('[MCP] career_transition_advice error:', { traceId, error });
             return json200({
               jsonrpc: "2.0",
               id: body.id ?? null,
