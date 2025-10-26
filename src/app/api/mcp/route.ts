@@ -3531,16 +3531,23 @@ export async function POST(request: NextRequest) {
 
             const data = await response.json();
             
+            // Return both text prompt and JSON data
             return json200({
               jsonrpc: "2.0",
               id: body.id ?? null,
               result: {
-                content: [{
-                  type: "json",
-                  data: {
-                    content: data
+                content: [
+                  {
+                    type: "text",
+                    text: `✅ Skill gap analysis completed for transition from "${from_job}" to "${to_job}".`
+                  },
+                  {
+                    type: "json",
+                    data: {
+                      content: data
+                    }
                   }
-                }],
+                ],
                 isError: false
               }
             }, { "X-MCP-Trace-Id": traceId });
