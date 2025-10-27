@@ -151,7 +151,7 @@ export default function GraduateInternsPage() {
         isArticle: true
       },
       {
-        id: 'ga2',
+        id: 'ga4',
         title: 'PwC Audit & Assurance Vacationer Program Interview Guide',
         thumbnail: 'https://images.unsplash.com/photo-1450101499163-c8848c66ca85?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
         createdAt: '2025-10-27',
@@ -160,7 +160,7 @@ export default function GraduateInternsPage() {
         isArticle: true
       },
       {
-        id: 'ga3',
+        id: 'ga5',
         title: 'PwC Consulting Vacationer Program Interview Guide',
         thumbnail: 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
         createdAt: '2025-10-28',
@@ -169,30 +169,12 @@ export default function GraduateInternsPage() {
         isArticle: true
       },
       {
-        id: 'ga4',
+        id: 'ga6',
         title: 'PwC Technology Vacationer Program Interview Guide',
-        thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+        thumbnail: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
         createdAt: '2025-10-28',
         description: 'Master PwC Technology Vacationer Program interviews with expert tips for Data & Analytics, Digital, and Technology roles. Real insights from students who got hired.',
         url: '/resources/interview-tips/graduate-interns/pwc-technology',
-        isArticle: true
-      },
-      {
-        id: 'ga5',
-        title: 'Coming Soon: KPMG Graduate Program Interview Tips',
-        thumbnail: 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-        createdAt: '2025-11-08',
-        description: 'Learn how to excel in KPMG Graduate Program interviews with expert guidance.',
-        url: '#',
-        isArticle: true
-      },
-      {
-        id: 'ga6',
-        title: 'Coming Soon: McKinsey Graduate Program Interview Tips',
-        thumbnail: 'https://images.unsplash.com/photo-1521737711867-e3b97375f902?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-        createdAt: '2025-11-09',
-        description: 'Master McKinsey Graduate Program interviews with case study preparation and behavioral tips.',
-        url: '#',
         isArticle: true
       }
     ]

@@ -5,31 +5,31 @@ import Link from 'next/link';
 import { AccountSettingIcon } from '@/components/AccountSettingIcon';
 
 export const metadata: Metadata = {
-  title: 'EP15. Carsales Tech Interview Questions Australia 2025 | Héra AI Career Guide',
-  description: '🚗 Master Carsales tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.',
-  keywords: 'Carsales jobs Australia, tech interview tips, software engineering interview, complex technical problems, team collaboration, software projects, Australian tech jobs, Héra AI career guide, AI career agent, job interview preparation Australia',
+  title: 'EP14. Domain Group Tech Interview Questions Australia 2025 | Héra AI Career Guide',
+  description: '🏘️ Master Domain Group tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.',
+  keywords: 'Domain Group jobs Australia, tech interview tips, software engineering interview, property search service, indexed search, API pagination, spatial data handling, Australian tech jobs, Héra AI career guide, AI career agent, job interview preparation Australia',
   openGraph: {
-    title: 'EP15. Carsales Tech Interview Questions Australia 2025 | Héra AI Career Guide',
-    description: '🚗 Master Carsales tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.',
+    title: 'EP14. Domain Group Tech Interview Questions Australia 2025 | Héra AI Career Guide',
+    description: '🏘️ Master Domain Group tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.',
     type: 'article',
-    url: 'https://www.heraai.net.au/resources/interview-tips/tech-interviews/carsales-tech-interview',
+    url: 'https://www.heraai.net.au/resources/interview-tips/tech-interviews/domain-group-tech-interview',
     images: [
       {
         url: 'https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80',
         width: 1200,
         height: 630,
-        alt: 'Carsales Tech Interview Questions Australia 2025',
+        alt: 'Domain Group Tech Interview Questions Australia 2025',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'EP15. Carsales Tech Interview Questions Australia 2025 | Héra AI Career Guide',
-    description: '🚗 Master Carsales tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.',
+    title: 'EP14. Domain Group Tech Interview Questions Australia 2025 | Héra AI Career Guide',
+    description: '🏘️ Master Domain Group tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.',
     images: ['https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80'],
   },
   alternates: {
-    canonical: 'https://www.heraai.net.au/resources/interview-tips/tech-interviews/carsales-tech-interview',
+    canonical: 'https://www.heraai.net.au/resources/interview-tips/tech-interviews/domain-group-tech-interview',
   },
   robots: {
     index: true,
@@ -37,12 +37,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function CarsalesTechInterviewPage() {
+export default function DomainGroupTechInterviewPage() {
   const jsonLd = {
     "@context": "https://schema.org/",
     "@type": "TechArticle",
-    "headline": "EP15. Carsales Tech Interview Questions Australia 2025 | Héra AI Career Guide",
-    "description": "Master Carsales tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.",
+    "headline": "EP14. Domain Group Tech Interview Questions Australia 2025 | Héra AI Career Guide",
+    "description": "Master Domain Group tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.",
     "author": {
       "@type": "Organization",
       "name": "Héra AI",
@@ -59,10 +59,10 @@ export default function CarsalesTechInterviewPage() {
         "url": "https://www.heraai.net.au/logo.png"
       }
     },
-    "keywords": ["Carsales jobs Australia", "tech interview tips", "software engineering interview", "complex technical problems", "team collaboration", "software projects", "Australian tech jobs", "Héra AI career guide", "AI career agent", "job interview preparation Australia"],
+    "keywords": ["Domain Group jobs Australia", "tech interview tips", "software engineering interview", "property search service", "indexed search", "API pagination", "spatial data handling", "Australian tech jobs", "Héra AI career guide", "AI career agent", "job interview preparation Australia"],
     "datePublished": "2025-10-25",
     "dateModified": "2025-10-25",
-    "mainEntityOfPage": "https://www.heraai.net.au/resources/interview-tips/tech-interviews/carsales-tech-interview",
+    "mainEntityOfPage": "https://www.heraai.net.au/resources/interview-tips/tech-interviews/domain-group-tech-interview",
     "image": "https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80"
   };
 
@@ -110,14 +110,14 @@ export default function CarsalesTechInterviewPage() {
             <span className="mx-2">/</span>
             <Link href="/resources/interview-tips/tech-interviews" className="hover:text-gray-700">Tech Interviews</Link>
             <span className="mx-2">/</span>
-            <span className="text-gray-900">Carsales</span>
+            <span className="text-gray-900">Domain Group</span>
           </nav>
         </div>
 
         <div className="max-w-4xl mx-auto px-6 py-8">
           <header className="mb-8">
             <h1 className="text-4xl font-bold text-gray-900 mb-4">
-              EP15. Carsales Tech Interview Questions & Tips
+              EP14. Domain Group Tech Interview Questions & Tips
             </h1>
             <div className="flex items-center space-x-4 text-sm text-gray-500 mb-6">
               <span>📅 Published: October 25, 2025</span>
@@ -125,7 +125,7 @@ export default function CarsalesTechInterviewPage() {
               <span>👥 By: Héra AI Career Team</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              {['Carsales jobs', 'Tech Interview', 'Problem Solving', 'Team Collaboration'].map((tag, index) => (
+              {['Domain Group jobs', 'Tech Interview', 'Property Technology', 'Search & Performance'].map((tag, index) => (
                 <span key={index} className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
                   {tag}
                 </span>
@@ -136,12 +136,12 @@ export default function CarsalesTechInterviewPage() {
           <section className="mb-8">
             <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden mb-6">
               <iframe
-                src="https://iframe.cloudflarestream.com/30d62025837873602d6b4d62fc9695c0"
+                src="https://iframe.cloudflarestream.com/419d8b4966ab17906cd167bddfc3be6e"
                 width="100%"
                 height="100%"
                 frameBorder="0"
                 allowFullScreen
-                title="Carsales Tech Interview Questions Video"
+                title="Domain Group Tech Interview Questions Video"
                 className="w-full h-full"
               />
             </div>
@@ -154,78 +154,79 @@ export default function CarsalesTechInterviewPage() {
             <section className="mb-8">
               <h2 className="text-2xl font-semibold text-gray-900 mb-4">Overview</h2>
               <p className="text-gray-700 leading-relaxed mb-4">
-                Carsales's tech interview process emphasizes structured problem-solving, team collaboration, and scalability design. 
-                The automotive platform values engineers who can tackle complex technical challenges, work effectively across teams, 
-                and design core features for scale and UX. Interviews typically focus on your approach to problem-solving, 
-                your experience with cross-team collaboration, and your ability to improve and scale core product features.
+                Domain Group's tech interview process focuses on building property search services that handle complex filtering, 
+                spatial data, and high-performance media loading. The property platform values engineers who can design indexed search systems, 
+                implement API pagination, and optimize real estate listings for user experience. 
+                Interviews typically focus on your ability to build consumer-facing features that improve digital customer journeys 
+                and your understanding of how technology impacts property search and real estate discovery.
               </p>
             </section>
 
             <section className="mb-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Top 3 Carsales Tech Interview Questions</h2>
+              <h2 className="text-2xl font-semibold text-gray-900 mb-4">Top 3 Domain Group Tech Interview Questions</h2>
               
               <div className="bg-gray-50 p-6 rounded-lg mb-6">
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">Question 1: Complex Technical Problem Solving</h3>
-                <p className="text-gray-700 mb-3 font-semibold">"What's your approach to solving complex technical problems at Carsales?"</p>
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">Question 1: Property Search Service Design</h3>
+                <p className="text-gray-700 mb-3 font-semibold">"How would you build a property search service that supports filtering by location and price?"</p>
                 <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-3">
                   <h4 className="text-lg font-semibold text-green-800 mb-2">✅ Do:</h4>
                   <ul className="list-disc list-inside text-green-700 mb-2">
-                    <li>Demonstrate structured problem-solving and align with Carsales's engineering focus</li>
-                    <li>Discuss systematic approaches like breaking down problems, identifying root causes, and prioritizing solutions</li>
-                    <li>Mention testing strategies, debugging techniques, and performance optimization</li>
-                    <li>Show understanding of how technical problem-solving impacts product quality and user experience</li>
+                    <li>Showcase indexed search, API pagination, and spatial data handling capabilities</li>
+                    <li>Discuss database indexing strategies for location and price queries</li>
+                    <li>Mention performance optimization, caching layers, and query optimization</li>
+                    <li>Show understanding of how property search impacts user experience and conversion rates</li>
                   </ul>
                 </div>
                 <div className="bg-red-50 border-l-4 border-red-400 p-4">
                   <h4 className="text-lg font-semibold text-red-800 mb-2">❌ Don't:</h4>
                   <ul className="list-disc list-inside text-red-700">
-                    <li>Give vague or unstructured problem-solving approaches</li>
-                    <li>Ignore Carsales's engineering focus and the importance of systematic problem-solving</li>
-                    <li>Focus only on technical solutions without considering user impact and product quality</li>
+                    <li>Give generic search advice without considering location and price complexity</li>
+                    <li>Ignore the critical importance of indexed search and API pagination in property platforms</li>
+                    <li>Focus only on basic filtering without considering spatial data handling and performance</li>
                   </ul>
                 </div>
               </div>
 
               <div className="bg-blue-50 p-6 rounded-lg mb-6">
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">Question 2: Cross-Team Collaboration</h3>
-                <p className="text-gray-700 mb-3 font-semibold">"Describe a time you worked across teams to deliver a software project."</p>
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">Question 2: Digital Customer Journey</h3>
+                <p className="text-gray-700 mb-3 font-semibold">"Describe a feature you built that helped improve a digital customer journey."</p>
                 <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-3">
                   <h4 className="text-lg font-semibold text-green-800 mb-2">✅ Do:</h4>
                   <ul className="list-disc list-inside text-green-700 mb-2">
-                    <li>Highlight collaboration and ownership, both valued at Carsales</li>
-                    <li>Discuss communication strategies, stakeholder management, and project coordination</li>
-                    <li>Mention conflict resolution, alignment building, and driving consensus</li>
-                    <li>Show understanding of how cross-team collaboration impacts project success and product delivery</li>
+                    <li>Domain is consumer-facing—focus on UX impact and data-driven iteration</li>
+                    <li>Discuss user research, A/B testing, and conversion optimization</li>
+                    <li>Mention analytics, user feedback loops, and continuous improvement strategies</li>
+                    <li>Show understanding of how customer journeys impact business metrics and user satisfaction</li>
                   </ul>
                 </div>
                 <div className="bg-red-50 border-l-4 border-red-400 p-4">
                   <h4 className="text-lg font-semibold text-red-800 mb-2">❌ Don't:</h4>
                   <ul className="list-disc list-inside text-red-700">
-                    <li>Give examples that don't demonstrate collaboration or ownership</li>
-                    <li>Ignore the importance of working across teams and driving alignment at Carsales</li>
-                    <li>Focus only on technical implementation without considering collaboration and stakeholder management</li>
+                    <li>Give examples that don't involve significant UX impact or data-driven iteration</li>
+                    <li>Ignore the consumer-facing nature of Domain's platform and user experience priorities</li>
+                    <li>Focus only on technical implementation without considering customer journey and business impact</li>
                   </ul>
                 </div>
               </div>
 
               <div className="bg-purple-50 p-6 rounded-lg mb-6">
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">Question 3: Scaling Core Features</h3>
-                <p className="text-gray-700 mb-3 font-semibold">"How would you improve or scale a core feature in Carsales's main product?"</p>
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">Question 3: High-Resolution Media Optimization</h3>
+                <p className="text-gray-700 mb-3 font-semibold">"How would you optimize high-resolution media loading on real estate listings?"</p>
                 <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-3">
                   <h4 className="text-lg font-semibold text-green-800 mb-2">✅ Do:</h4>
                   <ul className="list-disc list-inside text-green-700 mb-2">
-                    <li>Show awareness of Carsales's product and your ability to design for scale or UX</li>
-                    <li>Discuss performance optimization, architecture improvements, and user experience enhancements</li>
-                    <li>Mention scalability patterns, caching strategies, and infrastructure considerations</li>
-                    <li>Show understanding of how scaling features impacts both technical performance and user satisfaction</li>
+                    <li>Mention CDN, lazy loading, and perceptual performance metrics</li>
+                    <li>Discuss progressive image loading, responsive images, and bandwidth optimization</li>
+                    <li>Talk about image compression, format optimization, and critical resource prioritization</li>
+                    <li>Show understanding of how media performance directly affects property listing engagement</li>
                   </ul>
                 </div>
                 <div className="bg-red-50 border-l-4 border-red-400 p-4">
                   <h4 className="text-lg font-semibold text-red-800 mb-2">❌ Don't:</h4>
                   <ul className="list-disc list-inside text-red-700">
-                    <li>Give generic scaling advice without showing awareness of Carsales's product</li>
-                    <li>Ignore the importance of UX and scalability in core feature design</li>
-                    <li>Focus only on technical scaling without considering user experience and product strategy</li>
+                    <li>Give generic optimization advice without considering CDN and lazy loading strategies</li>
+                    <li>Ignore the critical importance of perceptual performance metrics in real estate platforms</li>
+                    <li>Focus only on technical solutions without considering user experience and media engagement</li>
                   </ul>
                 </div>
               </div>
@@ -235,9 +236,9 @@ export default function CarsalesTechInterviewPage() {
               <h2 className="text-2xl font-semibold text-gray-900 mb-4">Final Advice</h2>
               <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-lg">
                 <p className="text-gray-700 leading-relaxed text-lg">
-                  <strong>Carsales values engineers who can solve complex technical problems systematically, collaborate effectively across teams, and design scalable features.</strong> Show that you understand 
-                  the importance of structured problem-solving, demonstrate your experience with cross-team collaboration and ownership, 
-                  and prove your ability to improve and scale core product features with both technical excellence and UX awareness.
+                  <strong>Domain Group values engineers who can build property search services with indexed search, API pagination, and spatial data handling.</strong> Show that you understand 
+                  the unique challenges of consumer-facing property technology and demonstrate your ability to improve digital customer journeys, 
+                  optimize high-resolution media loading, and design features that drive UX impact through data-driven iteration.
                 </p>
               </div>
             </section>
@@ -287,9 +288,9 @@ export default function CarsalesTechInterviewPage() {
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">All Tech Interview Tips</h3>
                 <p className="text-gray-600">Browse all our tech interview guides from top Australian companies.</p>
               </Link>
-              <Link href="/resources/interview-tips/tech-interviews/domain-group-tech-interview" className="block p-6 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">EP14. Domain Group Tech Interview Questions & Tips</h3>
-                <p className="text-gray-600">Master Domain Group tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.</p>
+              <Link href="/resources/interview-tips/tech-interviews/canva-tech-interview" className="block p-6 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">EP13. Canva Tech Interview Questions & Tips</h3>
+                <p className="text-gray-600">Master Canva tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.</p>
               </Link>
             </div>
           </section>
@@ -305,3 +306,4 @@ export default function CarsalesTechInterviewPage() {
     </>
   );
 }
+

@@ -173,86 +173,77 @@ export default function ResourcesPage() {
           {
             id: 'f1',
             title: 'EP1. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Deloitte',
-            thumbnail: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-            createdAt: '2025-10-25',
+            thumbnail: 'https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+            createdAt: '2025-09-01',
             description: 'Master Deloitte Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
             url: '/resources/interview-tips/finance-strategy/deloitte-finance',
             isArticle: true
           },
           {
             id: 'f2',
-            title: 'Investment Banking Interview Guide Australia 2025',
-            thumbnail: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-            createdAt: '2025-10-26',
-            description: 'Master Investment Banking interviews with expert tips from professionals who got hired. Real Q&As, technical prep, and insider advice for IB roles in Australia.',
-            url: '/resources/interview-tips/finance-strategy/investment-banking',
+            title: 'EP2. Top 10 Interview Questions & Tips for Finance/Accounting Roles with PwC',
+            thumbnail: 'https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+            createdAt: '2025-09-02',
+            description: 'Master PwC Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
+            url: '/resources/interview-tips/finance-strategy/pwc-finance',
             isArticle: true
           },
           {
             id: 'f3',
-            title: 'Management Consulting Interview Guide Australia 2025',
+            title: 'EP3. Top 10 Interview Questions & Tips for Finance/Accounting Roles with EY',
             thumbnail: 'https://images.unsplash.com/photo-1552664730-d307ca884978?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-            createdAt: '2025-10-26',
-            description: 'Master Management Consulting interviews with case study prep, behavioral tips, and insider advice from consultants who got hired at top firms.',
-            url: '/resources/interview-tips/finance-strategy/management-consulting',
+            createdAt: '2025-09-03',
+            description: 'Master EY Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
+            url: '/resources/interview-tips/finance-strategy/ey-finance',
             isArticle: true
           },
           {
             id: 'f4',
-            title: 'Private Equity Interview Guide Australia 2025',
+            title: 'EP4. Top 10 Interview Questions & Tips for Finance/Accounting Roles with KPMG',
             thumbnail: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-            createdAt: '2025-10-27',
-            description: 'Master Private Equity interviews with technical prep, modeling tips, and insider advice from PE professionals who got hired in Australia.',
-            url: '/resources/interview-tips/finance-strategy/private-equity',
+            createdAt: '2025-09-04',
+            description: 'Master KPMG Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
+            url: '/resources/interview-tips/finance-strategy/kpmg-finance',
             isArticle: true
           },
           {
             id: 'f5',
-            title: 'Corporate Finance Interview Guide Australia 2025',
-            thumbnail: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-            createdAt: '2025-10-28',
-            description: 'Master Corporate Finance interviews with FP&A, treasury, and M&A prep tips from finance professionals who got hired at top companies.',
-            url: '/resources/interview-tips/finance-strategy/corporate-finance',
+            title: 'EP5. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Westpac',
+            thumbnail: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+            createdAt: '2025-09-05',
+            description: 'Master Westpac Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
+            url: '/resources/interview-tips/finance-strategy/westpac-finance',
             isArticle: true
           },
           {
             id: 'f6',
-            title: 'Hedge Fund Interview Guide Australia 2025',
-            thumbnail: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-            createdAt: '2025-10-25',
-            description: 'Master Hedge Fund interviews with quantitative prep, market analysis tips, and insider advice from hedge fund professionals.',
-            url: '/resources/interview-tips/finance-strategy/hedge-fund',
+            title: 'EP6. Top 10 Interview Questions & Tips for Finance/Accounting Roles with ANZ',
+            thumbnail: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+            createdAt: '2025-09-06',
+            description: 'Master ANZ Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
+            url: '/resources/interview-tips/finance-strategy/anz-finance',
             isArticle: true
           },
           {
             id: 'f7',
-            title: 'Venture Capital Interview Guide Australia 2025',
-            thumbnail: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-            createdAt: '2025-10-26',
-            description: 'Master Venture Capital interviews with startup analysis, due diligence prep, and insider advice from VC professionals in Australia.',
-            url: '/resources/interview-tips/finance-strategy/venture-capital',
+            title: 'EP7. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Commonwealth Bank',
+            thumbnail: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+            createdAt: '2025-09-07',
+            description: 'Master Commonwealth Bank Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
+            url: '/resources/interview-tips/finance-strategy/commbank-finance',
             isArticle: true
           },
           {
             id: 'f8',
-            title: 'Strategy Consulting Interview Guide Australia 2025',
-            thumbnail: 'https://images.unsplash.com/photo-1552664730-d307ca884978?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-            createdAt: '2025-10-27',
-            description: 'Master Strategy Consulting interviews with case study frameworks, market analysis prep, and insider advice from strategy consultants.',
-            url: '/resources/interview-tips/finance-strategy/strategy-consulting',
-            isArticle: true
-          },
-          {
-            id: 'f9',
-            title: 'Financial Planning Interview Guide Australia 2025',
-            thumbnail: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-            createdAt: '2025-10-28',
-            description: 'Master Financial Planning interviews with client management prep, regulatory knowledge, and insider advice from financial planners.',
-            url: '/resources/interview-tips/finance-strategy/financial-planning',
+            title: 'EP8. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Macquarie Group',
+            thumbnail: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+            createdAt: '2025-09-08',
+            description: 'Master Macquarie Group Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
+            url: '/resources/interview-tips/finance-strategy/macquarie-finance',
             isArticle: true
           }
         ],
-        totalCount: 8,
+        totalCount: 12,
         showAll: true
       },
       {
@@ -363,62 +354,39 @@ export default function ResourcesPage() {
              url: '/resources/interview-tips/tech-interviews/canva-tech-interview'
           },
           {
-            id: '11',
-            title: 'Python for Data Analysis',
-            thumbnail: '/api/placeholder/300/200',
-            createdAt: '2024-01-21',
-            description: 'Python skills needed for data analyst interviews. Pandas, NumPy, and data visualization.',
-            url: 'https://example.com/video11'
+            id: '22',
+            title: 'EP14. Domain Group Tech Interview Questions & Tips',
+            thumbnail: 'https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+            createdAt: '2025-10-25',
+            description: 'Master Domain Group tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.',
+            url: '/resources/interview-tips/tech-interviews/domain-group-tech-interview'
           },
           {
-            id: '12',
-            title: 'Case Study Interviews',
-            thumbnail: '/api/placeholder/300/200',
-            createdAt: '2024-01-19',
-            description: 'How to approach data analytics case study interviews. Problem-solving frameworks and examples.',
-            url: 'https://example.com/video12'
+            id: '23',
+            title: 'EP15. Carsales Tech Interview Questions & Tips',
+            thumbnail: 'https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+            createdAt: '2025-10-25',
+            description: 'Master Carsales tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.',
+            url: '/resources/interview-tips/tech-interviews/carsales-tech-interview'
+          },
+          {
+            id: '24',
+            title: 'EP16. Zip Co Tech Interview Questions & Tips',
+            thumbnail: 'https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+            createdAt: '2025-10-25',
+            description: 'Master Zip Co tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.',
+            url: '/resources/interview-tips/tech-interviews/zip-co-tech-interview'
+          },
+          {
+            id: '25',
+            title: 'EP17. Afterpay Tech Interview Questions & Tips',
+            thumbnail: 'https://images.unsplash.com/photo-1551434678-e076c223a692?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+            createdAt: '2025-10-25',
+            description: 'Master Afterpay tech interviews with expert tips from engineers who got hired. Real Q&As, preparation strategies, and insider advice for all tech jobs in Australia.',
+            url: '/resources/interview-tips/tech-interviews/afterpay-tech-interview'
           }
         ],
-        totalCount: 6,
-        showAll: true
-      },
-      {
-        name: 'Finance & Strategy',
-        videos: [
-          {
-            id: '13',
-            title: 'Investment Banking Interview Tips',
-            thumbnail: '/api/placeholder/300/200',
-            createdAt: '2024-01-30',
-            description: 'Essential tips for investment banking interviews. Technical questions, behavioral scenarios, and market knowledge.',
-            url: 'https://example.com/video13'
-          },
-          {
-            id: '14',
-            title: 'Financial Modeling Interview',
-            thumbnail: '/api/placeholder/300/200',
-            createdAt: '2024-01-28',
-            description: 'How to excel in financial modeling interviews. Excel skills, DCF models, and valuation techniques.',
-            url: 'https://example.com/video14'
-          },
-          {
-            id: '15',
-            title: 'Strategy Consulting Case Studies',
-            thumbnail: '/api/placeholder/300/200',
-            createdAt: '2024-01-26',
-            description: 'Master strategy consulting case study interviews. Framework thinking and problem-solving approaches.',
-            url: 'https://example.com/video15'
-          },
-          {
-            id: '16',
-            title: 'Corporate Finance Interview Prep',
-            thumbnail: '/api/placeholder/300/200',
-            createdAt: '2024-01-24',
-            description: 'Prepare for corporate finance interviews. Capital structure, valuation, and financial analysis.',
-            url: 'https://example.com/video16'
-          }
-        ],
-        totalCount: 5,
+        totalCount: 17,
         showAll: true
       },
       {
@@ -620,7 +588,7 @@ export default function ResourcesPage() {
                         
                         {/* 视频网格 */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                          {category.videos.map((video) => (
+                          {category.videos.slice(0, 8).map((video) => (
                             <Link
                               key={video.id}
                               href={video.url}
@@ -672,6 +640,7 @@ export default function ResourcesPage() {
                                 category.name === 'Christmas Casuals' ? '/resources/interview-tips/christmas-casuals' :
                                 category.name === 'Graduate & Interns' ? '/resources/interview-tips/graduate-interns' :
                                 category.name === 'Finance & Strategy' ? '/resources/interview-tips/finance-strategy' :
+                                category.name === 'Tech Interviews' ? '/resources/interview-tips/tech-interviews' :
                                 '#'
                               }
                               className="text-sm text-gray-600 font-medium hover:underline"

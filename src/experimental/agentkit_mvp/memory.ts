@@ -35,5 +35,3 @@ export async function clearMemory(sessionId: string): Promise<void> {
 export async function getMemoryKeys(): Promise<string[]> {
   return Array.from(sessionMemory.keys());
 }
-
-

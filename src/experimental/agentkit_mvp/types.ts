@@ -33,5 +33,3 @@ export type ExecutionRecord = {
   outputSnapshot?: unknown;
   createdAt: string;
 };
-
-

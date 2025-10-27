@@ -108,35 +108,35 @@ export default function FinanceStrategyPage() {
       },
       {
         id: 'f5',
-        title: 'EP5. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Macquarie Group',
-        thumbnail: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+        title: 'EP5. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Westpac',
+        thumbnail: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
         createdAt: '2025-09-05',
-        description: 'Master Macquarie Group Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
-        url: '/resources/interview-tips/finance-strategy/macquarie-finance'
-      },
-      {
-        id: 'f6',
-        title: 'EP6. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Commonwealth Bank',
-        thumbnail: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-        createdAt: '2025-09-06',
-        description: 'Master Commonwealth Bank Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
-        url: '/resources/interview-tips/finance-strategy/commbank-finance'
-      },
-      {
-        id: 'f7',
-        title: 'EP7. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Westpac',
-        thumbnail: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-        createdAt: '2025-09-07',
         description: 'Master Westpac Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
         url: '/resources/interview-tips/finance-strategy/westpac-finance'
       },
       {
-        id: 'f8',
-        title: 'EP8. Top 10 Interview Questions & Tips for Finance/Accounting Roles with ANZ',
+        id: 'f6',
+        title: 'EP6. Top 10 Interview Questions & Tips for Finance/Accounting Roles with ANZ',
         thumbnail: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-        createdAt: '2025-09-08',
+        createdAt: '2025-09-06',
         description: 'Master ANZ Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
         url: '/resources/interview-tips/finance-strategy/anz-finance'
+      },
+      {
+        id: 'f7',
+        title: 'EP7. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Commonwealth Bank',
+        thumbnail: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+        createdAt: '2025-09-07',
+        description: 'Master Commonwealth Bank Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
+        url: '/resources/interview-tips/finance-strategy/commbank-finance'
+      },
+      {
+        id: 'f8',
+        title: 'EP8. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Macquarie Group',
+        thumbnail: 'https://images.unsplash.com/photo-1559136555-9303baea8ebd?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
+        createdAt: '2025-09-08',
+        description: 'Master Macquarie Group Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
+        url: '/resources/interview-tips/finance-strategy/macquarie-finance'
       },
       {
         id: 'f9',
@@ -164,17 +164,9 @@ export default function FinanceStrategyPage() {
       },
       {
         id: 'f12',
-        title: 'EP12. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Rio Tinto',
-        thumbnail: 'https://images.unsplash.com/photo-1552664730-d307ca884978?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-        createdAt: '2025-09-12',
-        description: 'Master Rio Tinto Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
-        url: '/resources/interview-tips/finance-strategy/rio-tinto-finance'
-      },
-      {
-        id: 'f13',
-        title: 'EP13. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Telstra',
+        title: 'EP12. Top 10 Interview Questions & Tips for Finance/Accounting Roles with Telstra',
         thumbnail: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80',
-        createdAt: '2025-09-13',
+        createdAt: '2025-09-12',
         description: 'Master Telstra Finance and Accounting interviews with expert tips from professionals who got hired. Real Q&As, preparation strategies, and insider advice for Finance roles in Australia.',
         url: '/resources/interview-tips/finance-strategy/telstra-finance'
       }

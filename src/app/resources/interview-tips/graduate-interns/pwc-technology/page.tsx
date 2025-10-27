@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     url: 'https://www.heraai.net.au/resources/interview-tips/graduate-interns/pwc-technology',
     images: [
       {
-        url: 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80',
+        url: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80',
         width: 1200,
         height: 630,
         alt: 'PwC Technology Vacationer Program Interview Guide Australia 2025',
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'PwC Technology Vacationer Program Interview Guide Australia 2025 | Héra AI Career Guide',
     description: '💻 Master PwC Technology Vacationer Program interviews with expert tips from students who got hired. Real Q&As, preparation strategies, and insider advice for Data & Analytics, Digital, and Technology roles in Australia.',
-    images: ['https://images.unsplash.com/photo-1518709268805-4e9042af2176?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80'],
+    images: ['https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80'],
   },
   alternates: {
     canonical: 'https://www.heraai.net.au/resources/interview-tips/graduate-interns/pwc-technology',
@@ -65,7 +65,7 @@ export default function PwCTechnologyPage() {
     },
     "image": {
       "@type": "ImageObject",
-      "url": "https://images.unsplash.com/photo-1518709268805-4e9042af2176?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80",
+      "url": "https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80",
       "width": 1200,
       "height": 630,
       "alt": "PwC Technology Vacationer Program Interview Guide Australia 2025"
@@ -151,7 +151,7 @@ export default function PwCTechnologyPage() {
             {/* Featured Image */}
             <div className="aspect-video bg-gray-100 relative">
               <img
-                src="https://images.unsplash.com/photo-1518709268805-4e9042af2176?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80"
+                src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1200&q=80"
                 alt="PwC Technology Vacationer Program Interview Guide Australia 2025"
                 className="w-full h-full object-cover"
               />
@@ -161,69 +161,21 @@ export default function PwCTechnologyPage() {
             <div className="p-8">
               <div className="prose prose-lg max-w-none">
                 <section className="mb-8">
-                  <h2 className="text-2xl font-semibold text-gray-900 mb-4">Track C — Data & Analytics / Digital / Technology</h2>
+                  <h2 className="text-2xl font-semibold text-gray-900 mb-4">🎓 Program Snapshot & Eligibility</h2>
                   
                   <div className="bg-blue-50 p-6 rounded-lg mb-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">🎓 Program Overview</h3>
-                    <p className="text-gray-700 mb-4">
-                      PwC's Technology Vacationer Program immerses you in real client projects in data & analytics, digital transformation, and technology consulting.
-                      The program lasts 6–8 weeks and can lead directly to a graduate offer.
-                    </p>
-                    <p className="text-gray-700">
-                      Official role listings available on GradConnection and PwC's official careers portal.
-                    </p>
-                  </div>
-
-                  <div className="bg-green-50 p-6 rounded-lg mb-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">🧭 Recruitment Process</h3>
-                    <ol className="space-y-2 text-gray-700 list-decimal list-inside">
-                      <li>Online Application + Game-based Assessment (Situational & Cognitive)</li>
-                      <li>Video Interview (2–3 questions)</li>
-                      <li>Group Case Study / Virtual Assessment Centre</li>
-                      <li>Manager or Partner Interview (behavioral + case follow-up)</li>
-                    </ol>
-                  </div>
-
-                  <div className="bg-yellow-50 p-6 rounded-lg mb-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">💬 Common Questions</h3>
                     <ul className="space-y-2 text-gray-700">
                       <li className="flex items-start gap-2">
-                        <span className="text-yellow-600 mt-1">•</span>
-                        <span>"Tell us about a time you failed. What did you learn?"</span>
+                        <span className="text-blue-600 mt-1">•</span>
+                        <span>The Vacationer Program offers ~6-8 weeks of paid work (often over summer) in Australia across technology and data & analytics streams.</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="text-yellow-600 mt-1">•</span>
-                        <span>"Describe a project where you worked with a diverse team."</span>
+                        <span className="text-blue-600 mt-1">•</span>
+                        <span>Applicants are usually penultimate-year students (or final year depending on stream) with eligibility to work in Australia.</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="text-yellow-600 mt-1">•</span>
-                        <span>"If a client needs to reduce costs by 20% in 12 months, how would you approach it?"</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-yellow-600 mt-1">•</span>
-                        <span>"Why consulting, and why PwC?"</span>
-                      </li>
-                    </ul>
-                  </div>
-
-                  <div className="bg-green-50 p-6 rounded-lg">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">✅ Tips to Succeed</h3>
-                    <ul className="space-y-2 text-gray-700">
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-600 mt-1">•</span>
-                        <span>Structure your answers clearly: Problem → Analysis → Recommendation → Impact</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-600 mt-1">•</span>
-                        <span>In group cases, listen actively and build on others' ideas — collaboration is key</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-600 mt-1">•</span>
-                        <span>Research current business trends (ESG, digital transformation, AI)</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-green-600 mt-1">•</span>
-                        <span>Show commercial awareness and client-focused thinking rather than just theory</span>
+                        <span className="text-blue-600 mt-1">•</span>
+                        <span>Examples of skill sets sought: data analysis, visualization, software development, cloud/analytics tools, and ability to apply tech solutions in business contexts.</span>
                       </li>
                     </ul>
                   </div>
@@ -232,25 +184,87 @@ export default function PwCTechnologyPage() {
                 <div className="bg-gray-100 h-px my-8"></div>
 
                 <section className="mb-8">
-                  <h2 className="text-2xl font-semibold text-gray-900 mb-4">✍️ Overall Advice</h2>
+                  <h2 className="text-2xl font-semibold text-gray-900 mb-4">🧭 Recruitment Process (specific to Technology/Data)</h2>
                   
-                  <div className="bg-gray-50 p-6 rounded-lg">
+                  <div className="bg-green-50 p-6 rounded-lg mb-6">
+                    <ol className="space-y-2 text-gray-700 list-decimal list-inside">
+                      <li><strong>Online Application</strong> – Submit CV + academic transcript + motivation questions.</li>
+                      <li><strong>Online Assessment/Game-Based Test</strong> – Measures cognitive, situational judgment and may include "mini game" or logic tasks.</li>
+                      <li><strong>Video Interview</strong> – Pre-recorded or live, focusing on behavioral, situational and sometimes technical/data questions. For data streams: may include problem solving or describing data usage.</li>
+                      <li><strong>Assessment Centre / Final Interview</strong> – For successful candidates: group case (sometimes tech/data focused), 1-on-1 interview with team lead/manager, possibly technical questioning (SQL, tools, methods) for analytics roles.</li>
+                    </ol>
+                  </div>
+                </section>
+
+                <div className="bg-gray-100 h-px my-8"></div>
+
+                <section className="mb-8">
+                  <h2 className="text-2xl font-semibold text-gray-900 mb-4">💬 Sample Interview Questions (Technology/Data Track)</h2>
+                  
+                  <p className="text-gray-700 mb-4">
+                    These are questions reported by real candidates for PwC's data/tech roles in Australia (and globally) — good to prepare.
+                  </p>
+                  
+                  <div className="bg-yellow-50 p-6 rounded-lg mb-6">
                     <ul className="space-y-2 text-gray-700">
                       <li className="flex items-start gap-2">
-                        <span className="text-blue-600 mt-1">•</span>
-                        <span>Apply early — PwC operates rolling intakes and positions fill fast</span>
+                        <span className="text-yellow-600 mt-1">•</span>
+                        <span>"Tell me about a time you used data to influence a decision."</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="text-blue-600 mt-1">•</span>
-                        <span>Prepare for the game-based assessment by practicing situational and numerical logic tests</span>
+                        <span className="text-yellow-600 mt-1">•</span>
+                        <span>"Describe a technical challenge you faced in a team project and how you resolved it."</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="text-blue-600 mt-1">•</span>
-                        <span>Keep your answers concise, impact-driven, and aligned to PwC's values: Act with integrity, Make a difference, Care, Work together, Reimagine the possible</span>
+                        <span className="text-yellow-600 mt-1">•</span>
+                        <span>"How do you keep up with new technology?" or "Which emerging technology do you think will most impact our business?"</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="text-blue-600 mt-1">•</span>
-                        <span>Treat the Vacationer Program as a mini-graduate pipeline — performance often leads to a return offer</span>
+                        <span className="text-yellow-600 mt-1">•</span>
+                        <span>"Tell me about a time you were given a vague piece of information, and you had to complete a task." (great for data/analytics context)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-yellow-600 mt-1">•</span>
+                        <span>"You know that there will be overtime right? Are you okay with that?" (reported for analytics roles – shows workplace expectation)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-yellow-600 mt-1">•</span>
+                        <span>"Why do you want to work for PwC in Technology / Data & Analytics?" – behavioral and motivation question.</span>
+                      </li>
+                    </ul>
+                  </div>
+                </section>
+
+                <div className="bg-gray-100 h-px my-8"></div>
+
+                <section className="mb-8">
+                  <h2 className="text-2xl font-semibold text-gray-900 mb-4">✅ Tips to Stand Out (Technology/Data Track)</h2>
+                  
+                  <div className="bg-green-50 p-6 rounded-lg">
+                    <ul className="space-y-2 text-gray-700">
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-600 mt-1">•</span>
+                        <span>Link technical skills to business value — don't just list tools, show what you achieved with them (e.g., improved efficiency, derived insights, supported decisions).</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-600 mt-1">•</span>
+                        <span>Use the STAR method for behavioral answers (Situation → Task → Action → Result), but for data/tech also include Method → Outcome → Learnings.</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-600 mt-1">•</span>
+                        <span>Be prepared to discuss a project: what data you used, how you cleaned it, what methods/analysis, what outcomes, what trade-offs.</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-600 mt-1">•</span>
+                        <span>Demonstrate learning agility — tech/data changes fast; show you've picked up new tools or adapted to new challenges.</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-600 mt-1">•</span>
+                        <span>In group case or assessment centre: show you can communicate clearly (especially to non-technical stakeholders) — many tech/data roles also require translating insights to business context.</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-600 mt-1">•</span>
+                        <span>Align with PwC's values and culture: "Act with integrity", "Make a difference", "Care", "Work together", "Reimagine the possible". One interview reported being asked: "Which of these values do you most apply to and why?"</span>
                       </li>
                     </ul>
                   </div>
@@ -261,22 +275,11 @@ export default function PwCTechnologyPage() {
                 <section className="mb-8">
                   <h2 className="text-2xl font-semibold text-gray-900 mb-4">🔗 Apply Now</h2>
                   
-                  <p className="text-gray-700 mb-4">
-                    Apply via <Link href="https://www.heraai.net.au" className="text-blue-600 hover:underline">HeraAI.net.au</Link> or the official <Link href="https://jobs-au.pwc.com/au/en/vacation-program" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">PwC Australia Vacationer Program</Link>
-                  </p>
-                  <p className="text-gray-700 mb-4">
-                    Additional listings also available on:
-                  </p>
-                  <ul className="space-y-2 text-gray-700">
-                    <li className="flex items-start gap-2">
-                      <span className="text-blue-600 mt-1">•</span>
-                      <span><Link href="https://au.gradconnection.com/employers/pwc/jobs/pwc-fy26-vacationer-melbourne-consulting/" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">GradConnection Melbourne Consulting</Link></span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="text-blue-600 mt-1">•</span>
-                      <span><Link href="https://jobs-au.pwc.com/au/en/student-and-early-careers-landing-page" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">PwC Student and Early Careers</Link></span>
-                    </li>
-                  </ul>
+                  <div className="bg-blue-50 p-6 rounded-lg">
+                    <p className="text-gray-700">
+                      Official application page: <Link href="https://jobs-au.pwc.com/au/en/vacation-program" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">https://jobs-au.pwc.com/au/en/vacation-program</Link>
+                    </p>
+                  </div>
                 </section>
 
                 {/* Newsletter Signup */}

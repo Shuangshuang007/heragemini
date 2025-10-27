@@ -1,5 +1,8 @@
+import React from 'react';
 import { Metadata } from 'next';
+import { Logo } from '@/components/Logo';
 import Link from 'next/link';
+import { AccountSettingIcon } from '@/components/AccountSettingIcon';
 
 export const metadata: Metadata = {
   title: '🇦🇺 Walk-in Job Hunting Guide in Australia | Héra AI Career Guide',
@@ -71,22 +74,34 @@ export default function WalkInJobHuntingGuide() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <div className="bg-white shadow-sm">
-          <div className="max-w-4xl mx-auto px-6 py-4">
-            <div className="flex items-center justify-between">
-              <Link href="/" className="text-2xl font-bold text-gray-900">
-                Héra AI
-              </Link>
-              <nav className="hidden md:flex space-x-8">
-                <Link href="/profile" className="text-gray-600 hover:text-gray-900">Profile</Link>
-                <Link href="/jobs" className="text-gray-600 hover:text-gray-900">Jobs</Link>
-                <Link href="/applications" className="text-gray-600 hover:text-gray-900">Applications</Link>
-                <Link href="/resources" className="text-blue-600 font-medium">Resources</Link>
-              </nav>
+      <div className="min-h-screen bg-white">
+        {/* Navigation */}
+        <div className="border-b border-gray-200 bg-white fixed top-0 left-0 w-full z-50 shadow-sm h-[56px]">
+          <nav className="flex justify-between items-center px-6 h-[56px]">
+            <div className="flex space-x-6">
+              <Logo />
+              <div className="hidden md:flex space-x-6">
+                <Link href="/profile" className="border-b-2 border-transparent h-[56px] flex items-center text-[18px] font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+                  Profile
+                </Link>
+                <Link href="/jobs" className="border-b-2 border-transparent h-[56px] flex items-center text-[18px] font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+                  Jobs
+                </Link>
+                <Link href="/applications" className="border-b-2 border-transparent h-[56px] flex items-center text-[18px] font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+                  Applications
+                </Link>
+                <Link href="/resources" className="border-b-2 border-blue-500 h-[56px] flex items-center text-[18px] font-medium text-blue-600">
+                  Resources
+                </Link>
+              </div>
             </div>
-          </div>
+            <div className="flex items-center space-x-4">
+              <AccountSettingIcon 
+                isPremium={false}
+                className="ml-8"
+              />
+            </div>
+          </nav>
         </div>
 
         {/* Breadcrumb Navigation */}
