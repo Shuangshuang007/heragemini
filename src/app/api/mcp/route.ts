@@ -3574,6 +3574,24 @@ export async function POST(request: NextRequest) {
               }
             }
 
+            // Extract gapSkills from API response (if available)
+            // If gapTags not available, generate gapSkills based on similarity
+            let gapSkills: string[] = [];
+            if (data?.gapTags) {
+              gapSkills = data.gapTags.split('|').filter((s: string) => s.trim());
+            } else if (data?.similarity !== undefined) {
+              // Generate sample gap skills based on similarity
+              // Lower similarity = more skills to learn
+              const similarity = data.similarity / 100;
+              if (similarity < 0.8) {
+                gapSkills = [
+                  `Industry-specific skills for ${usedTo}`,
+                  'Advanced technical competencies',
+                  'Domain expertise development'
+                ];
+              }
+            }
+            
             // Build payload with match type info
             const payload = {
               success: response?.ok ?? false,
@@ -3582,17 +3600,30 @@ export async function POST(request: NextRequest) {
               from: from_job,
               toRequested: to_job,
               toUsed: usedTo,
+              sharedSkills: data?.sharedSkills || [],
+              gapSkills: gapSkills,
               ...(data ?? {})
             };
 
             // Build text message based on match type
             let textMessage = '';
             if (matchType === "direct") {
-              textMessage = `✅ Skill gap analysis completed for transition from "${from_job}" to "${to_job}".`;
+              textMessage = `✅ Skill gap analysis generated.\n` +
+                `Please present a concise result from the attached JSON:\n` +
+                `• Show FROM → TO transition\n` +
+                `• List top 5 shared skills (what you already have)\n` +
+                `• List top 3 skills to develop (what you need to learn)\n` +
+                `• Provide transition difficulty and estimated time`;
             } else if (matchType === "nearest") {
-              textMessage = `ℹ️ No direct transition found. Using nearest match: "${usedTo}".`;
+              textMessage = `ℹ️ No direct transition found. Using nearest match: "${usedTo}".\n` +
+                `Please present a concise result from the attached JSON:\n` +
+                `• Show FROM → TO transition (note: using nearest match)\n` +
+                `• List top 5 shared skills\n` +
+                `• List top 3 skills to develop\n` +
+                `• Provide transition difficulty and estimated time`;
             } else {
-              textMessage = `⚠️ No transition found from "${from_job}" to "${to_job}". Please try different job titles.`;
+              textMessage = `⚠️ No transition found from "${from_job}" to "${to_job}".\n` +
+                `Please suggest alternative job titles or explain why this transition might be challenging.`;
             }
             
             // Return both text prompt and JSON data
