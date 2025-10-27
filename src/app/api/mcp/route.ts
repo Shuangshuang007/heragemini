@@ -3521,15 +3521,79 @@ export async function POST(request: NextRequest) {
           try {
             const apiUrl = process.env.CAREER_SWITCH_API_URL || 'http://149.28.175.142:3009';
             
-            const response = await fetch(
-              `${apiUrl}/api/career/skill-gap/${encodeURIComponent(from_job)}/${encodeURIComponent(to_job)}`
-            );
-
-            if (!response.ok) {
-              throw new Error(`Career API returned ${response.status}`);
+            // Helper function to call skill-gap API
+            async function callSkillGap(from: string, to: string) {
+              const response = await fetch(
+                `${apiUrl}/api/career/skill-gap/${encodeURIComponent(from)}/${encodeURIComponent(to)}`
+              );
+              const text = await response.text();
+              let data: any;
+              try {
+                data = JSON.parse(text);
+              } catch {
+                data = null;
+              }
+              return { response, data };
             }
 
-            const data = await response.json();
+            // Step 1: Try direct match
+            let { response, data } = await callSkillGap(from_job, to_job);
+            let matchType: "direct" | "nearest" | "none" = "direct";
+            let usedTo = to_job;
+
+            // Step 2: Fallback to nearest match if 404 or empty
+            if (!response.ok || !data || data.success === false) {
+              console.log('[MCP] Direct match failed, trying fallback to nearest candidate...');
+              matchType = "nearest";
+              
+              // Get all transitions from from_job
+              const transitionsResponse = await fetch(
+                `${apiUrl}/api/career/transitions/${encodeURIComponent(from_job)}?minSimilarity=0.5&limit=10`
+              );
+              
+              if (transitionsResponse.ok) {
+                const transitionsData = await transitionsResponse.json();
+                const toLower = to_job.toLowerCase();
+                
+                // Try to find nearest match by fuzzy string matching
+                const nearest = (transitionsData.transitions || []).find((t: any) =>
+                  String(t.toJob || "").toLowerCase().includes(toLower)
+                ) || (transitionsData.transitions || [])[0];
+                
+                if (nearest) {
+                  usedTo = nearest.toJob;
+                  console.log('[MCP] Using nearest match:', usedTo);
+                  ({ response, data } = await callSkillGap(from_job, usedTo));
+                } else {
+                  matchType = "none";
+                  data = { success: false, reason: "no transition found" };
+                }
+              } else {
+                matchType = "none";
+                data = { success: false, reason: "no transition found" };
+              }
+            }
+
+            // Build payload with match type info
+            const payload = {
+              success: response?.ok ?? false,
+              tool: "career_skill_gap_analysis",
+              matchType,
+              from: from_job,
+              toRequested: to_job,
+              toUsed: usedTo,
+              ...(data ?? {})
+            };
+
+            // Build text message based on match type
+            let textMessage = '';
+            if (matchType === "direct") {
+              textMessage = `✅ Skill gap analysis completed for transition from "${from_job}" to "${to_job}".`;
+            } else if (matchType === "nearest") {
+              textMessage = `ℹ️ No direct transition found. Using nearest match: "${usedTo}".`;
+            } else {
+              textMessage = `⚠️ No transition found from "${from_job}" to "${to_job}". Please try different job titles.`;
+            }
             
             // Return both text prompt and JSON data
             return json200({
@@ -3539,12 +3603,12 @@ export async function POST(request: NextRequest) {
                 content: [
                   {
                     type: "text",
-                    text: `✅ Skill gap analysis completed for transition from "${from_job}" to "${to_job}".`
+                    text: textMessage
                   },
                   {
                     type: "json",
                     data: {
-                      content: data
+                      content: payload
                     }
                   }
                 ],
