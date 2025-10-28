@@ -23,6 +23,7 @@ import { tailorResumeWithGPT } from '../../../gpt-services/resume/tailorResume';
 import { AgentKitPlanner } from '../../../lib/agentkit/planner';
 import { AgentKitExecutor } from '../../../lib/agentkit/executor';
 import { AgentKitMemory } from '../../../lib/agentkit/memory';
+import { FeedbackCollector } from '../../../lib/feedback/FeedbackCollector';
 import {
   deduplicateJobs,
   enhanceJobsWithSources,
@@ -989,6 +990,13 @@ async function handleOptimizeResume({
 export async function POST(request: NextRequest) {
   const startTime = now();
   
+  // ============================================
+  // Feedback Collection (可开关，默认开启)
+  // ============================================
+  const ENABLE_FEEDBACK = process.env.ENABLE_FEEDBACK !== 'false';
+  const fc = ENABLE_FEEDBACK ? FeedbackCollector.getInstance() : null;
+  let feedback_event_id: string | null = null;
+  
   try {
     const body = await request.json().catch(() => null);
     if (!body) {
@@ -1000,7 +1008,30 @@ export async function POST(request: NextRequest) {
       id: body.id,
       mode: HERA_MCP_MODE,
       startAt: new Date().toISOString(),
+      feedback_enabled: ENABLE_FEEDBACK
     });
+    
+    // ============================================
+    // 记录工具调用开始（非阻塞）
+    // ============================================
+    if (fc && body.method === 'tools/call' && body.params?.name) {
+      feedback_event_id = await fc.recordStart(
+        body.params.name,
+        body.params.arguments || {},
+        {
+          trace_id: crypto.randomUUID(),
+          session_id: body.params.arguments?.user_email || body.id || 'anonymous',
+          user_email: body.params.arguments?.user_email
+        }
+      ).catch(err => {
+        console.error('[Feedback] recordStart failed (non-blocking):', err);
+        return null;
+      });
+      
+      if (feedback_event_id) {
+        console.log('[Feedback] Event recorded:', feedback_event_id);
+      }
+    }
 
     // Ignore notifications (prevent MCP 424)
     if (typeof body.method === "string" && body.method.startsWith("notifications/")) {
@@ -3732,6 +3763,19 @@ export async function POST(request: NextRequest) {
       traceId,
       elapsed: now() - startTime,
     });
+    
+    // ============================================
+    // 记录错误（非阻塞）
+    // ============================================
+    if (fc && feedback_event_id) {
+      setTimeout(() => {
+        fc.recordEnd(
+          feedback_event_id!,
+          { error: String(error?.message || error) },
+          now() - startTime
+        );
+      }, 0);
+    }
 
     // Always return HTTP 200 with error in JSON body
     return json200({
@@ -3751,6 +3795,20 @@ export async function POST(request: NextRequest) {
         isError: false
       }
     }, { "X-MCP-Trace-Id": traceId });
+    
+  } finally {
+    // ============================================
+    // 统一记录完成（非阻塞，兜底）
+    // ============================================
+    if (fc && feedback_event_id) {
+      setTimeout(() => {
+        fc.recordEnd(
+          feedback_event_id!,
+          { status: 'completed' },
+          now() - startTime
+        );
+      }, 0);
+    }
   }
 }
 
