@@ -7,9 +7,11 @@
 // - 错误不影响主流程
 
 import { getDb } from '../db/mongoClient';
+import { WithId, ObjectId } from 'mongodb';
 import crypto from 'crypto';
 
 export interface FeedbackEvent {
+  _id?: ObjectId;
   event_id: string;
   session_id: string;
   user_email?: string | null;
@@ -122,13 +124,18 @@ export class FeedbackCollector {
   async getSessionFeedback(session_id: string, limit: number = 10): Promise<FeedbackEvent[]> {
     try {
       const db = await getDb();
-      const events = await db.collection('feedback_events')
+      const col = db.collection<FeedbackEvent>('feedback_events');
+      
+      const docs: WithId<FeedbackEvent>[] = await col
         .find({ session_id })
         .sort({ timestamp: -1 })
         .limit(limit)
         .toArray();
       
-      return events as FeedbackEvent[];
+      // 去掉 _id，返回干净的 FeedbackEvent[]
+      const events: FeedbackEvent[] = docs.map(({ _id, ...rest }) => rest);
+      return events;
+      
     } catch (error) {
       console.error('[Feedback] Get session error:', error);
       return [];
