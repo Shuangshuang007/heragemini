@@ -2985,6 +2985,32 @@ export async function POST(request: NextRequest) {
               summary += `。如有其他补充信息或想法，请告诉我！`;
             }
 
+            // ============================================
+            // 记录推荐结果到 feedback_events（非阻塞）
+            // ============================================
+            if (fc && feedback_event_id) {
+              const output_data = {
+                recommendations: recommendedJobs.map(job => ({
+                  job_id: job.id || job.jobIdentifier || job._id?.toString(),
+                  title: job.title,
+                  company: job.company,
+                  location: job.location,
+                  matchScore: job.matchScore,
+                  url: job.url
+                })),
+                total: recommendedJobs.length,
+                search_criteria: {
+                  job_title: searchCriteria.jobTitle,
+                  city: searchCriteria.city
+                },
+                summary: `Recommended ${recommendedJobs.length} jobs: ${recommendedJobs.slice(0, 3).map(j => j.title).join(', ')}${recommendedJobs.length > 3 ? '...' : ''}`
+              };
+              
+              setTimeout(() => {
+                fc.recordEnd(feedback_event_id!, output_data);
+              }, 0);
+            }
+
             return json200({
               jsonrpc: "2.0",
               id: body.id ?? null,
@@ -3798,17 +3824,8 @@ export async function POST(request: NextRequest) {
     
   } finally {
     // ============================================
-    // 统一记录完成（非阻塞，兜底）
+    // 已在各工具内部记录 output，此处不再重复
     // ============================================
-    if (fc && feedback_event_id) {
-      setTimeout(() => {
-        fc.recordEnd(
-          feedback_event_id!,
-          { status: 'completed' },
-          now() - startTime
-        );
-      }, 0);
-    }
   }
 }
 

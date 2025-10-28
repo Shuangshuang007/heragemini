@@ -96,7 +96,7 @@ export class FeedbackCollector {
   /**
    * 更新输出结果 - 完全非阻塞
    */
-  recordEnd(event_id: string, output: any, processing_time_ms: number): void {
+  recordEnd(event_id: string, output: any): void {
     // 完全非阻塞（不等待，不阻塞主流程）
     setImmediate(() => {
       this.asyncWrite(async () => {
@@ -105,15 +105,12 @@ export class FeedbackCollector {
           { event_id },
           {
             $set: {
-              output: {
-                result: output,
-                processing_time_ms
-              },
+              output: output,
               updated_at: new Date()
             }
           }
         );
-        console.log(`[Feedback] ✅ End recorded: ${event_id} (${processing_time_ms}ms)`);
+        console.log(`[Feedback] ✅ End recorded: ${event_id}`);
       });
     });
   }
