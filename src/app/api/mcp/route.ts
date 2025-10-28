@@ -3797,8 +3797,7 @@ export async function POST(request: NextRequest) {
       setTimeout(() => {
         fc.recordEnd(
           feedback_event_id!,
-          { error: String(error?.message || error) },
-          now() - startTime
+          { error: String(error?.message || error) }
         );
       }, 0);
     }
