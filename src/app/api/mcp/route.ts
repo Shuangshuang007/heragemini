@@ -997,6 +997,12 @@ export async function POST(request: NextRequest) {
   const fc = ENABLE_FEEDBACK ? FeedbackCollector.getInstance() : null;
   let feedback_event_id: string | null = null;
   
+  // ============================================
+  // AgentKit Memory (PR-1: 运行时去重缓存)
+  // ============================================
+  const ENABLE_MEMORY = process.env.ENABLE_MEMORY !== 'false';
+  console.log('[MCP] ENABLE_MEMORY:', ENABLE_MEMORY);
+  
   try {
     const body = await request.json().catch(() => null);
     if (!body) {
@@ -2839,12 +2845,38 @@ export async function POST(request: NextRequest) {
             const collection = db.collection('hera_jobs.jobs');
             
             // ========================================
-            // Phase 2: 两层去重逻辑（不依赖 AgentKit）
+            // PR-1: 三层去重逻辑（AgentKit Memory 增强）
             // ========================================
             let EXCLUDE_SET = new Set<string>(exclude_ids);  // Layer 1: 参数传递（实时）
             console.log(`[MCP] Layer 1 (exclude_ids parameter): ${exclude_ids.length} jobs`);
             
-            // Layer 2: feedback_events 补充历史（有超时保护）
+            // Layer 2: AgentKit Memory（运行时缓存，低延迟）
+            let memory_read_success = false;
+            if (ENABLE_MEMORY && session_id) {
+              try {
+                const memory = new AgentKitMemory();
+                const context = await memory.getContext(session_id);
+                
+                if (context?.context?.jobContext?.shown_job_ids) {
+                  const memory_ids = context.context.jobContext.shown_job_ids;
+                  let added_count = 0;
+                  memory_ids.forEach((id: string) => {
+                    if (!EXCLUDE_SET.has(id)) {
+                      EXCLUDE_SET.add(id);
+                      added_count++;
+                    }
+                  });
+                  console.log(`[MCP] Layer 2 (AgentKit Memory): added ${added_count} jobs from memory`);
+                  memory_read_success = true;
+                } else {
+                  console.log(`[MCP] Layer 2 (AgentKit Memory): no previous jobs in memory`);
+                }
+              } catch (err) {
+                console.warn('[MCP] AgentKit Memory read failed (non-blocking):', err);
+              }
+            }
+            
+            // Layer 3: feedback_events 补充历史（有超时保护）
             if (fc && (session_id || user_email)) {
               try {
                 const history_session = session_id || user_email || 'anonymous';
@@ -2863,13 +2895,13 @@ export async function POST(request: NextRequest) {
                     }
                   });
                 });
-                console.log(`[MCP] Layer 2 (feedback_events): added ${feedback_count} jobs from ${history.length} events`);
+                console.log(`[MCP] Layer 3 (feedback_events): added ${feedback_count} jobs from ${history.length} events`);
               } catch (err) {
                 console.warn('[MCP] feedback_events read failed (non-blocking):', err);
               }
             }
             
-            console.log(`[MCP] Total jobs to exclude: ${EXCLUDE_SET.size}`);
+            console.log(`[MCP] recommend_jobs - EXCLUDE_SET size: ${EXCLUDE_SET.size}`);
             
             // 构建查询条件
             const query: any = { is_active: { $ne: false } };
@@ -3112,6 +3144,38 @@ export async function POST(request: NextRequest) {
                   job.id || job.jobIdentifier || job._id?.toString()
                 );
                 fc.updateFeedback(feedback_event_id!, 'shown_jobs', shown_job_ids);
+              }, 0);
+            }
+            
+            // ========================================
+            // PR-1: 更新 AgentKit Memory（异步，非阻塞）
+            // ========================================
+            if (ENABLE_MEMORY && session_id) {
+              const new_job_ids = recommendedJobs.map(job => job.id);
+              
+              setTimeout(async () => {
+                try {
+                  const memory = new AgentKitMemory();
+                  const context = await memory.getContext(session_id);
+                  
+                  const existing_ids = context?.context?.jobContext?.shown_job_ids || [];
+                  const updated_ids = [...existing_ids, ...new_job_ids].slice(-50);  // 保留最近50个
+                  
+                  await memory.storeContext(session_id, {
+                    jobContext: {
+                      shown_job_ids: updated_ids,
+                      last_search: {
+                        job_title: searchCriteria.jobTitle,
+                        city: searchCriteria.city,
+                        timestamp: new Date()
+                      }
+                    }
+                  });
+                  
+                  console.log(`[MCP] AgentKit Memory updated: ${new_job_ids.length} new jobs added, total ${updated_ids.length} in memory`);
+                } catch (err) {
+                  console.warn('[MCP] AgentKit Memory update failed (non-blocking):', err);
+                }
               }, 0);
             }
 
