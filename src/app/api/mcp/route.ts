@@ -1003,6 +1003,7 @@ export async function POST(request: NextRequest) {
       return json200({ error: "invalid_json" });
     }
 
+    // GPT 清单第1点：入口快速日志
     console.log('[MCP] POST request:', {
       method: body.method,
       id: body.id,
@@ -1010,6 +1011,9 @@ export async function POST(request: NextRequest) {
       startAt: new Date().toISOString(),
       feedback_enabled: ENABLE_FEEDBACK
     });
+    console.log('[MCP] session_id from args:', body?.params?.arguments?.session_id);
+    console.log('[MCP] tool name:', body?.params?.name);
+    console.log('[MCP] ENABLE_FEEDBACK:', process.env.ENABLE_FEEDBACK, 'fc!=null:', !!fc);
     
     // ============================================
     // 记录工具调用开始（非阻塞）
@@ -1151,6 +1155,55 @@ export async function POST(request: NextRequest) {
               }
             },
             required: ["user_profile"],
+            additionalProperties: false
+          }
+        },
+        {
+          name: "refine_recommendations",
+          description: "🔄 REFINE JOB RECOMMENDATIONS - Use when user wants MORE jobs or provides FEEDBACK on previous recommendations!\n\n✅ ALWAYS use this tool when user:\n• Says 'show me more', 'more jobs', 'more recommendations', 'continue', 'next batch'\n• Provides feedback: 'I like #2 and #5', 'not interested in #3', 'exclude the Google one'\n• Asks for similar jobs: 'more like the first one', 'similar to the Canva job'\n• Wants to refine: 'different companies', 'other options'\n\n🎯 This tool:\n• Excludes ALL previously shown jobs (from meta.returned_job_ids)\n• Applies user preferences (liked/disliked jobs)\n• Analyzes liked jobs to find similar opportunities\n• Returns fresh recommendations with no duplicates\n\n📝 Examples:\n• User: 'show me more' → refine_recommendations({ session_id, exclude_ids: [previous IDs] })\n• User: 'I like #2, not #3' → refine_recommendations({ liked_job_ids: [id_2], disliked_job_ids: [id_3] })\n• User: 'more jobs like the Amazon one' → refine_recommendations({ liked_job_ids: [amazon_id] })\n\n⚠️ IMPORTANT: Always pass exclude_ids from previous meta.returned_job_ids to avoid duplicates!",
+          inputSchema: {
+            type: "object",
+            properties: {
+              job_title: {
+                type: "string",
+                description: "Job title to search (optional, can reuse from previous search)"
+              },
+              city: {
+                type: "string",
+                description: "City to search in (optional, can reuse from previous search)"
+              },
+              liked_job_ids: {
+                type: "array",
+                items: { type: "string" },
+                description: "Job IDs user explicitly liked (e.g., from 'I like #2 and #5')"
+              },
+              disliked_job_ids: {
+                type: "array",
+                items: { type: "string" },
+                description: "Job IDs user explicitly disliked (e.g., from 'not interested in #3')"
+              },
+              exclude_ids: {
+                type: "array",
+                items: { type: "string" },
+                description: "ALL job IDs to exclude from search (from meta.returned_job_ids of previous calls)"
+              },
+              session_id: {
+                type: "string",
+                description: "Session ID to track conversation context (required)"
+              },
+              user_email: {
+                type: "string",
+                description: "User email for cross-session tracking (optional)"
+              },
+              limit: {
+                type: "integer",
+                default: 10,
+                minimum: 5,
+                maximum: 20,
+                description: "Number of jobs to return (default: 10)"
+              }
+            },
+            required: ["session_id"],
             additionalProperties: false
           }
         },
@@ -2717,10 +2770,15 @@ export async function POST(request: NextRequest) {
             city, 
             limit = 10, 
             use_chat_context = true, 
-            strict_filters = true 
+            strict_filters = true,
+            session_id,      // Phase 2: 用于后台统计
+            user_email,      // Phase 2: 用于后台统计
+            exclude_ids = [] // GPT 方案: 直接传参去重（实时生效）
           } = args;
           
-          console.log('[MCP] recommend_jobs - Input args:', { job_title, city, limit, use_chat_context, strict_filters });
+          console.log('[MCP] recommend_jobs - exclude_ids:', exclude_ids.length);
+          
+          console.log('[MCP] recommend_jobs - Input args:', { job_title, city, limit, use_chat_context, strict_filters, session_id, user_email, has_fc: !!fc });
           
           // 信息优先级处理：对话明确信息 > 简历解析信息 > 默认值
           const determineSearchCriteria = () => {
@@ -2780,8 +2838,46 @@ export async function POST(request: NextRequest) {
             const { db } = await connectToMongoDB();
             const collection = db.collection('hera_jobs.jobs');
             
+            // ========================================
+            // Phase 2: 两层去重逻辑（不依赖 AgentKit）
+            // ========================================
+            let EXCLUDE_SET = new Set<string>(exclude_ids);  // Layer 1: 参数传递（实时）
+            console.log(`[MCP] Layer 1 (exclude_ids parameter): ${exclude_ids.length} jobs`);
+            
+            // Layer 2: feedback_events 补充历史（有超时保护）
+            if (fc && (session_id || user_email)) {
+              try {
+                const history_session = session_id || user_email || 'anonymous';
+                const historyPromise = fc.getSessionFeedback(history_session, 20);
+                const timeoutPromise = new Promise<any[]>((resolve) => 
+                  setTimeout(() => resolve([]), 500)
+                );
+                const history = await Promise.race([historyPromise, timeoutPromise]);
+                
+                let feedback_count = 0;
+                history.forEach((event: any) => {
+                  (event.feedback?.shown_jobs || []).forEach((id: string) => {
+                    if (!EXCLUDE_SET.has(id)) {
+                      EXCLUDE_SET.add(id);
+                      feedback_count++;
+                    }
+                  });
+                });
+                console.log(`[MCP] Layer 2 (feedback_events): added ${feedback_count} jobs from ${history.length} events`);
+              } catch (err) {
+                console.warn('[MCP] feedback_events read failed (non-blocking):', err);
+              }
+            }
+            
+            console.log(`[MCP] Total jobs to exclude: ${EXCLUDE_SET.size}`);
+            
             // 构建查询条件
             const query: any = { is_active: { $ne: false } };
+            
+            // 统一排除逻辑
+            if (EXCLUDE_SET.size > 0) {
+              query.id = { $nin: Array.from(EXCLUDE_SET) };
+            }
             
             // 如果启用了严格筛选且有明确的搜索条件
             if (strict_filters && (searchCriteria.jobTitle || searchCriteria.city)) {
@@ -2808,6 +2904,8 @@ export async function POST(request: NextRequest) {
               .sort({ updatedAt: -1, createdAt: -1 })
               .limit(searchLimit)
               .toArray();
+
+            console.log(`[MCP] Database returned ${recentJobs.length} jobs after excluding ${exclude_ids.length} via exclude_ids`);
 
             // 转换为前端格式
             const transformedJobs = recentJobs
@@ -3008,8 +3106,21 @@ export async function POST(request: NextRequest) {
               
               setTimeout(() => {
                 fc.recordEnd(feedback_event_id!, output_data);
+                
+                // Phase 2: 记录本次展示的职位（用于去重）
+                const shown_job_ids = recommendedJobs.map(job => 
+                  job.id || job.jobIdentifier || job._id?.toString()
+                );
+                fc.updateFeedback(feedback_event_id!, 'shown_jobs', shown_job_ids);
               }, 0);
             }
+
+            // Phase 2: 添加用户反馈提示文案
+            const feedback_prompt = `\n\n💡 **What would you like to do next?**\n` +
+              `- Tell me which jobs you like (e.g., "I like #2 and #5")\n` +
+              `- Tell me which ones don't interest you (e.g., "Not interested in #3")\n` +
+              `- Ask for more similar jobs (e.g., "Show me more jobs like #2")\n` +
+              `- Or simply say "show me more recommendations"`;
 
             return json200({
               jsonrpc: "2.0",
@@ -3017,10 +3128,9 @@ export async function POST(request: NextRequest) {
               result: {
                 content: [{
                   type: "text",
-                  text: `# 🎯 Personalized Job Recommendations\n\n${summary}\n\n${recommendations}`
+                  text: `# 🎯 Personalized Job Recommendations\n\n${summary}\n\n${recommendations}${feedback_prompt}`
                 }],
                 isError: false,
-                // 添加isFinal标记防止重复调用
                 mode: "recommend",
                 query_used: { 
                   job_title: searchCriteria.jobTitle, 
@@ -3028,7 +3138,11 @@ export async function POST(request: NextRequest) {
                 },
                 used_resume: true,
                 total: recommendedJobs.length,
-                isFinal: true
+                isFinal: false,  // Phase 2: 改为 false，等待用户反馈
+                // GPT 方案: 暴露本次返回的 job IDs 供下次去重
+                meta: {
+                  returned_job_ids: recommendedJobs.map(job => job.id)
+                }
               }
             }, { "X-MCP-Trace-Id": traceId });
 
@@ -3043,6 +3157,282 @@ export async function POST(request: NextRequest) {
                   text: `Failed to get job recommendations: ${error.message}`
                 }],
                 isError: false
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+        }
+
+        // ============================================
+        // Tool: refine_recommendations (Phase 2)
+        // ============================================
+        else if (name === "refine_recommendations") {
+          const { 
+            job_title, 
+            city, 
+            liked_job_ids = [], 
+            disliked_job_ids = [], 
+            exclude_ids = [],
+            session_id,
+            user_email,
+            limit = 10 
+          } = args;
+          
+          console.log('[MCP] refine_recommendations - Input:', { 
+            liked_count: liked_job_ids.length, 
+            disliked_count: disliked_job_ids.length,
+            exclude_count: exclude_ids.length,
+            session_id,
+            limit 
+          });
+          
+          try {
+            const { db } = await connectToMongoDB();
+            const collection = db.collection('hera_jobs.jobs');
+            
+            // ========================================
+            // 汇总所有要排除的职位（两层）
+            // ========================================
+            let EXCLUDE_SET = new Set<string>(exclude_ids);  // Layer 1: 参数
+            disliked_job_ids.forEach((id: string) => EXCLUDE_SET.add(id));  // disliked 也排除
+            console.log(`[refine] Layer 1 (exclude_ids + disliked): ${EXCLUDE_SET.size} jobs`);
+            
+            // Layer 2: feedback_events 补充历史
+            if (fc && (session_id || user_email)) {
+              try {
+                const history_session = session_id || user_email || 'anonymous';
+                const historyPromise = fc.getSessionFeedback(history_session, 20);
+                const timeoutPromise = new Promise<any[]>((resolve) => 
+                  setTimeout(() => resolve([]), 500)
+                );
+                const history = await Promise.race([historyPromise, timeoutPromise]);
+                
+                let feedback_count = 0;
+                history.forEach((event: any) => {
+                  (event.feedback?.shown_jobs || []).forEach((id: string) => {
+                    if (!EXCLUDE_SET.has(id)) {
+                      EXCLUDE_SET.add(id);
+                      feedback_count++;
+                    }
+                  });
+                  (event.feedback?.disliked_jobs || []).forEach((id: string) => {
+                    if (!EXCLUDE_SET.has(id)) {
+                      EXCLUDE_SET.add(id);
+                      feedback_count++;
+                    }
+                  });
+                });
+                console.log(`[refine] Layer 2 (feedback_events): added ${feedback_count} jobs`);
+              } catch (err) {
+                console.warn('[refine] feedback_events read failed (non-blocking):', err);
+              }
+            }
+            
+            console.log(`[refine] Total jobs to exclude: ${EXCLUDE_SET.size}`);
+            
+            // ========================================
+            // 分析用户偏好（如果有 liked）
+            // ========================================
+            let preferences: any = null;
+            if (liked_job_ids.length > 0) {
+              try {
+                const liked_jobs = await collection.find({
+                  id: { $in: liked_job_ids }
+                }).toArray();
+                
+                if (liked_jobs.length > 0) {
+                  preferences = {
+                    preferred_titles: [...new Set(liked_jobs.map(j => j.title))],
+                    preferred_companies: [...new Set(liked_jobs.map(j => j.company))],
+                    preferred_skills: liked_jobs.flatMap(j => j.skills || []),
+                    preferred_locations: [...new Set(liked_jobs.map(j => j.location))]
+                  };
+                  console.log('[refine] User preferences extracted from', liked_jobs.length, 'liked jobs');
+                }
+              } catch (err) {
+                console.warn('[refine] Failed to fetch liked jobs:', err);
+              }
+            }
+            
+            // ========================================
+            // 构建查询（排除 EXCLUDE_SET + 必须过滤）
+            // ========================================
+            const query: any = {
+              is_active: { $ne: false },
+              id: { $nin: Array.from(EXCLUDE_SET) }
+            };
+            
+            // 必须过滤：city 和 job_title（如果提供）
+            if (city) {
+              query.location = { $regex: city, $options: 'i' };
+            }
+            if (job_title) {
+              query.$or = [
+                { title: { $regex: job_title, $options: 'i' } },
+                { summary: { $regex: job_title, $options: 'i' } }
+              ];
+            }
+            
+            // 如果有偏好，作为加分项而不是硬过滤（在打分阶段处理）
+            // 这样可以避免查询结果太少
+            
+            console.log('[refine] Query:', JSON.stringify(query, null, 2));
+            
+            // ========================================
+            // 查询候选（保持 30）
+            // ========================================
+            const searchLimit = 30;
+            const candidates = await collection.find(query)
+              .sort({ createdAt: -1 })
+              .limit(searchLimit)
+              .toArray();
+            
+            console.log(`[refine] Found ${candidates.length} candidates after excluding ${EXCLUDE_SET.size}`);
+            
+            // 如果候选不足，回退查询
+            if (candidates.length < limit) {
+              console.log('[refine] Not enough candidates, trying fallback query');
+              const fallback = await collection.find({
+                is_active: { $ne: false },
+                id: { $nin: Array.from(EXCLUDE_SET) }
+              })
+              .sort({ createdAt: -1 })
+              .limit(searchLimit)
+              .toArray();
+              candidates.push(...fallback);
+              console.log(`[refine] After fallback: ${candidates.length} total candidates`);
+            }
+            
+            // ========================================
+            // 轻量打分（如果有偏好）
+            // ========================================
+            let scored = candidates;
+            if (preferences) {
+              scored = candidates.map(job => {
+                let score = 50; // 基础分
+                
+                // 标题匹配 +30
+                if (preferences.preferred_titles.some((t: string) => 
+                  job.title.toLowerCase().includes(t.toLowerCase())
+                )) score += 30;
+                
+                // 公司匹配 +20
+                if (preferences.preferred_companies.includes(job.company)) score += 20;
+                
+                // 技能匹配 每个 +5（上限 25）
+                const matching_skills = (job.skills || []).filter((s: string) => 
+                  preferences.preferred_skills.includes(s)
+                );
+                score += Math.min(matching_skills.length * 5, 25);
+                
+                // 地点匹配 +10
+                if (preferences.preferred_locations.includes(job.location)) score += 10;
+                
+                return { ...job, personalized_score: Math.min(score, 100) };
+              });
+              
+              scored.sort((a, b) => b.personalized_score - a.personalized_score);
+              console.log('[refine] Applied preference scoring');
+            }
+            
+            const top_n = scored.slice(0, limit);
+            const results = top_n.map(job => {
+              const transformed = transformMongoDBJobToFrontendFormat(job);
+              if (transformed && job.personalized_score) {
+                transformed.personalized_score = job.personalized_score;  // 保留打分
+              }
+              return transformed;
+            }).filter(j => j);
+            
+            console.log(`[refine] Returning ${results.length} refined recommendations`);
+            
+            // ========================================
+            // 记录到 feedback_events（异步）
+            // ========================================
+            if (fc && feedback_event_id) {
+              const output_data = {
+                recommendations: results.map(job => ({
+                  job_id: job.id,
+                  title: job.title,
+                  company: job.company,
+                  location: job.location,
+                  personalized_score: job.personalized_score || 50
+                })),
+                total: results.length,
+                excluded_count: EXCLUDE_SET.size,
+                preferences_applied: !!preferences
+              };
+              
+              setTimeout(() => {
+                fc.recordEnd(feedback_event_id!, output_data);
+                
+                // 记录 shown_jobs
+                const shown_ids = results.map(j => j.id);
+                fc.updateFeedback(feedback_event_id!, 'shown_jobs', shown_ids);
+                
+                // 记录 liked/disliked
+                if (liked_job_ids.length > 0) {
+                  fc.updateFeedback(feedback_event_id!, 'liked_jobs', liked_job_ids);
+                }
+                if (disliked_job_ids.length > 0) {
+                  fc.updateFeedback(feedback_event_id!, 'disliked_jobs', disliked_job_ids);
+                }
+              }, 0);
+            }
+            
+            // ========================================
+            // 格式化并返回
+            // ========================================
+            const formatted_jobs = results.map((job, index) => {
+              const score_text = preferences && job.personalized_score 
+                ? `🎯 Personalized Score: ${job.personalized_score}%\n` 
+                : '';
+              return `**${index + 1}. ${job.title}** at ${job.company}\n` +
+                `📍 ${job.location} | 💼 ${job.jobType || 'Full-time'} | 💰 ${job.salary || 'Not specified'}\n` +
+                score_text +
+                `🔗 [View Job](${job.url})\n` +
+                `---\n`;
+            }).join('\n');
+            
+            const summary = preferences 
+              ? `Based on your preferences, here are ${results.length} new personalized recommendations (excluded ${EXCLUDE_SET.size} previously seen jobs):`
+              : `Here are ${results.length} new recommendations (excluded ${EXCLUDE_SET.size} previously seen jobs):`;
+            
+            const feedback_prompt = `\n\n💡 **Want more?**\n` +
+              `- Tell me which jobs you like (e.g., "I like #2 and #4")\n` +
+              `- Tell me which to exclude (e.g., "Not interested in #3")\n` +
+              `- Or say "show me more" to continue`;
+            
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{
+                  type: "text",
+                  text: `# 🔄 Refined Job Recommendations\n\n${summary}\n\n${formatted_jobs}${feedback_prompt}`
+                }],
+                isError: false,
+                mode: "refine",
+                total: results.length,
+                excluded_count: EXCLUDE_SET.size,
+                preferences_applied: !!preferences,
+                isFinal: false,
+                meta: {
+                  returned_job_ids: results.map(j => j.id)
+                }
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+            
+          } catch (error: any) {
+            console.error('[MCP] refine_recommendations error:', error);
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{
+                  type: "text",
+                  text: `Failed to refine recommendations: ${error.message}`
+                }],
+                isError: true
               }
             }, { "X-MCP-Trace-Id": traceId });
           }

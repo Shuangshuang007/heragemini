@@ -30,6 +30,10 @@ export interface FeedbackEvent {
     saved_at?: Date;
     applied_at?: Date;
     downloaded_at?: Date;
+    // 新增字段（Phase 1）
+    shown_jobs?: string[];       // 本次展示给用户的职位ID列表
+    liked_jobs?: string[];       // 用户明确喜欢的职位ID列表
+    disliked_jobs?: string[];    // 用户明确不喜欢的职位ID列表
   };
   trace_id: string;
   processed: boolean;
@@ -137,6 +141,27 @@ export class FeedbackCollector {
       console.error('[Feedback] Get session error:', error);
       return [];
     }
+  }
+  
+  /**
+   * 更新反馈字段 - 完全非阻塞（Phase 1 新增）
+   * 用于记录 shown_jobs, liked_jobs, disliked_jobs
+   */
+  updateFeedback(event_id: string, field: string, job_ids: string[]): void {
+    // 完全非阻塞（不等待，不阻塞主流程）
+    setImmediate(() => {
+      this.asyncWrite(async () => {
+        const db = await getDb();
+        await db.collection('feedback_events').updateOne(
+          { event_id },
+          {
+            $addToSet: { [`feedback.${field}`]: { $each: job_ids } },
+            $set: { updated_at: new Date() }
+          }
+        );
+        console.log(`[Feedback] ✅ Updated ${field} for ${event_id} (${job_ids.length} items)`);
+      });
+    });
   }
   
   /**
