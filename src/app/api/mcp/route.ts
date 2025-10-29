@@ -3241,10 +3241,10 @@ export async function POST(request: NextRequest) {
                 
                 if (liked_jobs.length > 0) {
                   preferences = {
-                    preferred_titles: [...new Set(liked_jobs.map(j => j.title))],
-                    preferred_companies: [...new Set(liked_jobs.map(j => j.company))],
-                    preferred_skills: liked_jobs.flatMap(j => j.skills || []),
-                    preferred_locations: [...new Set(liked_jobs.map(j => j.location))]
+                    preferred_titles: [...new Set(liked_jobs.map((j: any) => j.title))],
+                    preferred_companies: [...new Set(liked_jobs.map((j: any) => j.company))],
+                    preferred_skills: liked_jobs.flatMap((j: any) => j.skills || []),
+                    preferred_locations: [...new Set(liked_jobs.map((j: any) => j.location))]
                   };
                   console.log('[refine] User preferences extracted from', liked_jobs.length, 'liked jobs');
                 }
