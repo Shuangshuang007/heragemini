@@ -1166,7 +1166,7 @@ export async function POST(request: NextRequest) {
         },
         {
           name: "refine_recommendations",
-          description: "REFINE JOB RECOMMENDATIONS – When the user says 'show me more', 'more jobs', 'next/continue', or gives feedback like 'not interested in #N' / 'I like #N', call this tool immediately. Do not ask for confirmation; refine the results now. Always reuse the same session_id and, if available, pass exclude_ids from the previous response (meta.returned_job_ids). This tool excludes previously shown jobs (via exclude_ids or memory), applies likes/dislikes if provided, and returns fresh, non‑duplicate recommendations.",
+          description: "REFINE JOB RECOMMENDATIONS – Use this tool whenever the user asks for more jobs, similar ones, next results, or gives feedback such as 'not interested' or 'show me more'. Always use the same session_id and pass exclude_ids from the previous meta if available. Do not ask for confirmation — respond immediately by refining the recommendations. Key triggers: 'show me more', 'more jobs', 'next/continue', 'I like #N', 'not interested in #N'. This tool will exclude previously shown jobs (via exclude_ids or memory), apply likes/dislikes if provided, and return fresh, non-duplicate results.",
           inputSchema: {
             type: "object",
             properties: {
