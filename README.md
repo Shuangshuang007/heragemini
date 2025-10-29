@@ -9,6 +9,8 @@ An intelligent job search platform that aggregates and analyzes job listings fro
 - Real-time job search and filtering
 - Detailed job insights and summaries
 - Location-based job search
+- **🆕 Intelligent multi-turn recommendations with automatic duplicate filtering** ([详情](./docs/MULTI_TURN_RECOMMENDATIONS.md))
+- **🆕 ChatGPT Actions integration via MCP protocol**
 
 ## Screenshots
 
@@ -64,6 +66,12 @@ npm run start
 ```
 
 The application will be available at http://localhost:3002
+
+## 📚 Documentation
+
+- **[Multi-Turn Recommendations Guide](./docs/MULTI_TURN_RECOMMENDATIONS.md)** - Learn how to implement intelligent, duplicate-free multi-turn job recommendations
+- **[MCP Integration](./MCP_INTEGRATION_GUIDE.md)** - ChatGPT Actions integration guide
+- **[AgentKit Tools](./heraai_rebuild_public_v1/src/lib/agentkit/)** - AI planning and execution framework
 
 ## Contributing
 
