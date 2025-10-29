@@ -3307,7 +3307,7 @@ export async function POST(request: NextRequest) {
             // ========================================
             let scored = candidates;
             if (preferences) {
-              scored = candidates.map(job => {
+              scored = candidates.map((job: any) => {
                 let score = 50; // 基础分
                 
                 // 标题匹配 +30
@@ -3330,18 +3330,18 @@ export async function POST(request: NextRequest) {
                 return { ...job, personalized_score: Math.min(score, 100) };
               });
               
-              scored.sort((a, b) => b.personalized_score - a.personalized_score);
+              scored.sort((a: any, b: any) => b.personalized_score - a.personalized_score);
               console.log('[refine] Applied preference scoring');
             }
             
             const top_n = scored.slice(0, limit);
-            const results = top_n.map(job => {
+            const results = top_n.map((job: any) => {
               const transformed = transformMongoDBJobToFrontendFormat(job);
               if (transformed && job.personalized_score) {
                 transformed.personalized_score = job.personalized_score;  // 保留打分
               }
               return transformed;
-            }).filter(j => j);
+            }).filter((j: any) => j);
             
             console.log(`[refine] Returning ${results.length} refined recommendations`);
             
@@ -3350,7 +3350,7 @@ export async function POST(request: NextRequest) {
             // ========================================
             if (fc && feedback_event_id) {
               const output_data = {
-                recommendations: results.map(job => ({
+                recommendations: results.map((job: any) => ({
                   job_id: job.id,
                   title: job.title,
                   company: job.company,
@@ -3366,7 +3366,7 @@ export async function POST(request: NextRequest) {
                 fc.recordEnd(feedback_event_id!, output_data);
                 
                 // 记录 shown_jobs
-                const shown_ids = results.map(j => j.id);
+                const shown_ids = results.map((j: any) => j.id);
                 fc.updateFeedback(feedback_event_id!, 'shown_jobs', shown_ids);
                 
                 // 记录 liked/disliked
@@ -3382,7 +3382,7 @@ export async function POST(request: NextRequest) {
             // ========================================
             // 格式化并返回
             // ========================================
-            const formatted_jobs = results.map((job, index) => {
+            const formatted_jobs = results.map((job: any, index: number) => {
               const score_text = preferences && job.personalized_score 
                 ? `🎯 Personalized Score: ${job.personalized_score}%\n` 
                 : '';
@@ -3417,7 +3417,7 @@ export async function POST(request: NextRequest) {
                 preferences_applied: !!preferences,
                 isFinal: false,
                 meta: {
-                  returned_job_ids: results.map(j => j.id)
+                  returned_job_ids: results.map((j: any) => j.id)
                 }
               }
             }, { "X-MCP-Trace-Id": traceId });
