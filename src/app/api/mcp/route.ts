@@ -1188,6 +1188,16 @@ export async function POST(request: NextRequest) {
                 items: { type: "string" },
                 description: "Job IDs user explicitly disliked (e.g., from 'not interested in #3')"
               },
+              liked_indexes: {
+                type: "array",
+                items: { type: "integer" },
+                description: "1-based indexes of liked jobs from the last results (server maps to IDs)"
+              },
+              disliked_indexes: {
+                type: "array",
+                items: { type: "integer" },
+                description: "1-based indexes of disliked jobs from the last results (server maps to IDs)"
+              },
               exclude_ids: {
                 type: "array",
                 items: { type: "string" },
@@ -2906,9 +2916,10 @@ export async function POST(request: NextRequest) {
             // 构建查询条件
             const query: any = { is_active: { $ne: false } };
             
-            // 统一排除逻辑
+            // 统一排除逻辑（限制上限，避免 $nin 过大影响性能）
             if (EXCLUDE_SET.size > 0) {
-              query.id = { $nin: Array.from(EXCLUDE_SET) };
+              const EXCLUDE_IDS = Array.from(EXCLUDE_SET).slice(-2000);
+              query.id = { $nin: EXCLUDE_IDS };
             }
             
             // 如果启用了严格筛选且有明确的搜索条件
@@ -3159,15 +3170,16 @@ export async function POST(request: NextRequest) {
                   const context = await memory.getContext(session_id);
                   
                   const existing_ids = context?.context?.jobContext?.shown_job_ids || [];
-                  const updated_ids = [...existing_ids, ...new_job_ids].slice(-50);  // 保留最近50个
+                  const updated_ids = [...existing_ids, ...new_job_ids].slice(-500);  // 保留最近500个
                   
                   await memory.storeContext(session_id, {
                     jobContext: {
                       shown_job_ids: updated_ids,
+                      last_returned_ids: new_job_ids,
                       last_search: {
                         job_title: searchCriteria.jobTitle,
                         city: searchCriteria.city,
-                        timestamp: new Date()
+                        timestamp: new Date().toISOString()
                       }
                     }
                   });
@@ -3205,7 +3217,8 @@ export async function POST(request: NextRequest) {
                 isFinal: false,  // Phase 2: 改为 false，等待用户反馈
                 // GPT 方案: 暴露本次返回的 job IDs 供下次去重
                 meta: {
-                  returned_job_ids: recommendedJobs.map(job => job.id)
+                  returned_job_ids: recommendedJobs.map(job => job.id),
+                  index_to_id: recommendedJobs.map(job => job.id)
                 }
               }
             }, { "X-MCP-Trace-Id": traceId });
@@ -3235,6 +3248,8 @@ export async function POST(request: NextRequest) {
             city, 
             liked_job_ids = [], 
             disliked_job_ids = [], 
+            liked_indexes = [],
+            disliked_indexes = [],
             exclude_ids = [],
             session_id,
             user_email,
@@ -3244,6 +3259,8 @@ export async function POST(request: NextRequest) {
           console.log('[MCP] refine_recommendations - Input:', { 
             liked_count: liked_job_ids.length, 
             disliked_count: disliked_job_ids.length,
+            liked_indexes: Array.isArray(liked_indexes) ? liked_indexes.length : 0,
+            disliked_indexes: Array.isArray(disliked_indexes) ? disliked_indexes.length : 0,
             exclude_count: exclude_ids.length,
             session_id,
             limit 
@@ -3254,13 +3271,73 @@ export async function POST(request: NextRequest) {
             const collection = db.collection('hera_jobs.jobs');
             
             // ========================================
-            // 汇总所有要排除的职位（两层）
+            // 汇总所有要排除的职位（多层）
             // ========================================
             let EXCLUDE_SET = new Set<string>(exclude_ids);  // Layer 1: 参数
             disliked_job_ids.forEach((id: string) => EXCLUDE_SET.add(id));  // disliked 也排除
+            const param_excluded_count = EXCLUDE_SET.size;
             console.log(`[refine] Layer 1 (exclude_ids + disliked): ${EXCLUDE_SET.size} jobs`);
+
+            // Layer 2: AgentKit Memory（与 recommend_jobs 对齐）
+            let memory_added_count = 0;
+            let effectiveJobTitle: string | undefined = job_title;
+            let effectiveCity: string | undefined = city;
+            let lastReturnedIds: string[] = [];
+            if (session_id) {
+              try {
+                const memory = new AgentKitMemory();
+                const context = await memory.getContext(session_id);
+                if (context?.context?.jobContext?.shown_job_ids) {
+                  const memory_ids: string[] = context.context.jobContext.shown_job_ids;
+                  memory_ids.forEach((id: string) => {
+                    if (!EXCLUDE_SET.has(id)) {
+                      EXCLUDE_SET.add(id);
+                      memory_added_count++;
+                    }
+                  });
+                }
+                if (context?.context?.jobContext?.last_returned_ids) {
+                  lastReturnedIds = context.context.jobContext.last_returned_ids;
+                }
+                // 自动回填上一轮检索条件
+                const last = context?.context?.jobContext?.last_search;
+                if (last) {
+                  if (!effectiveJobTitle && last.job_title) effectiveJobTitle = last.job_title;
+                  if (!effectiveCity && last.city) effectiveCity = last.city;
+                }
+                console.log(`[refine] Layer 2 (AgentKit Memory): added ${memory_added_count} jobs`);
+              } catch (err) {
+                console.warn('[refine] AgentKit Memory read failed (non-blocking):', err);
+              }
+            }
+
+            // 将 liked_indexes / disliked_indexes 映射为 IDs 并合并
+            const mapIndexes = (indexes: number[]) => {
+              const out: string[] = [];
+              if (Array.isArray(indexes) && lastReturnedIds.length > 0) {
+                indexes.forEach((idx) => {
+                  const i = (idx || 0) - 1; // 1-based → 0-based
+                  if (i >= 0 && i < lastReturnedIds.length) {
+                    out.push(String(lastReturnedIds[i]));
+                  }
+                });
+              }
+              return out;
+            };
+            const mappedLiked = mapIndexes(liked_indexes);
+            const mappedDisliked = mapIndexes(disliked_indexes);
+            if (mappedLiked.length) {
+              console.log('[refine] Mapped liked_indexes → IDs:', mappedLiked.length);
+              mappedLiked.forEach((id) => liked_job_ids.push(id));
+            }
+            if (mappedDisliked.length) {
+              console.log('[refine] Mapped disliked_indexes → IDs:', mappedDisliked.length);
+              mappedDisliked.forEach((id) => {
+                if (!EXCLUDE_SET.has(id)) EXCLUDE_SET.add(id);
+              });
+            }
             
-            // Layer 2: feedback_events 补充历史
+            // Layer 3: feedback_events 补充历史
             if (fc && (session_id || user_email)) {
               try {
                 const history_session = session_id || user_email || 'anonymous';
@@ -3291,7 +3368,7 @@ export async function POST(request: NextRequest) {
               }
             }
             
-            console.log(`[refine] Total jobs to exclude: ${EXCLUDE_SET.size}`);
+            console.log(`[refine] Total jobs to exclude: ${EXCLUDE_SET.size} (param=${param_excluded_count}, memory=${memory_added_count})`);
             
             // ========================================
             // 分析用户偏好（如果有 liked）
@@ -3322,17 +3399,17 @@ export async function POST(request: NextRequest) {
             // ========================================
             const query: any = {
               is_active: { $ne: false },
-              id: { $nin: Array.from(EXCLUDE_SET) }
+              id: { $nin: Array.from(EXCLUDE_SET).slice(-2000) }
             };
             
             // 必须过滤：city 和 job_title（如果提供）
-            if (city) {
-              query.location = { $regex: city, $options: 'i' };
+            if (effectiveCity) {
+              query.location = { $regex: effectiveCity, $options: 'i' };
             }
-            if (job_title) {
+            if (effectiveJobTitle) {
               query.$or = [
-                { title: { $regex: job_title, $options: 'i' } },
-                { summary: { $regex: job_title, $options: 'i' } }
+                { title: { $regex: effectiveJobTitle, $options: 'i' } },
+                { summary: { $regex: effectiveJobTitle, $options: 'i' } }
               ];
             }
             
@@ -3345,19 +3422,26 @@ export async function POST(request: NextRequest) {
             // 查询候选（保持 30）
             // ========================================
             const searchLimit = 30;
-            const candidates = await collection.find(query)
+            let candidates = await collection.find(query)
               .sort({ createdAt: -1 })
               .limit(searchLimit)
               .toArray();
             
             console.log(`[refine] Found ${candidates.length} candidates after excluding ${EXCLUDE_SET.size}`);
+
+            // 追加一道 _id 维度的排除兜底（若历史里存的是 _id 字符串）
+            const beforeIdFilter = candidates.length;
+            candidates = candidates.filter((doc: any) => !EXCLUDE_SET.has(String(doc?._id || '')));
+            if (candidates.length !== beforeIdFilter) {
+              console.log(`[refine] Post-fetch _id filter removed ${beforeIdFilter - candidates.length} candidates`);
+            }
             
             // 如果候选不足，回退查询
             if (candidates.length < limit) {
               console.log('[refine] Not enough candidates, trying fallback query');
               const fallback = await collection.find({
                 is_active: { $ne: false },
-                id: { $nin: Array.from(EXCLUDE_SET) }
+                id: { $nin: Array.from(EXCLUDE_SET).slice(-2000) }
               })
               .sort({ createdAt: -1 })
               .limit(searchLimit)
@@ -3398,16 +3482,53 @@ export async function POST(request: NextRequest) {
               console.log('[refine] Applied preference scoring');
             }
             
-            const top_n = scored.slice(0, limit);
-            const results = top_n.map((job: any) => {
-              const transformed = transformMongoDBJobToFrontendFormat(job);
-              if (transformed && job.personalized_score) {
-                transformed.personalized_score = job.personalized_score;  // 保留打分
+            // 转换并做指纹去重（公司+标题+地点），再截取前 N 条
+            let transformed = scored.map((job: any) => {
+              const out = transformMongoDBJobToFrontendFormat(job);
+              if (out && (job as any).personalized_score) {
+                (out as any).personalized_score = (job as any).personalized_score;
               }
-              return transformed;
+              return out;
             }).filter((j: any) => j);
+
+            const beforeFingerprint = transformed.length;
+            transformed = deduplicateJobs(transformed as any);
+            if (transformed.length !== beforeFingerprint) {
+              console.log(`[refine] Fingerprint dedup removed ${beforeFingerprint - transformed.length} items`);
+            }
+
+            const results = transformed.slice(0, limit);
             
             console.log(`[refine] Returning ${results.length} refined recommendations`);
+
+            // ========================================
+            // 更新 AgentKit Memory（异步，非阻塞）
+            // ========================================
+            if (session_id) {
+              const returned_ids = results.map((j: any) => j.id).filter(Boolean);
+              setTimeout(async () => {
+                try {
+                  const memory = new AgentKitMemory();
+                  const context = await memory.getContext(session_id);
+                  const existing_ids = context?.context?.jobContext?.shown_job_ids || [];
+                  const updated_ids = [...existing_ids, ...returned_ids].slice(-500); // 滚动窗口 500
+                  await memory.storeContext(session_id, {
+                    jobContext: {
+                      shown_job_ids: updated_ids,
+                      last_returned_ids: returned_ids,
+                      last_search: {
+                        job_title: effectiveJobTitle,
+                        city: effectiveCity,
+                        timestamp: new Date().toISOString()
+                      }
+                    }
+                  });
+                  console.log(`[refine] AgentKit Memory updated: +${returned_ids.length}, total ~${updated_ids.length}`);
+                } catch (err) {
+                  console.warn('[refine] AgentKit Memory update failed (non-blocking):', err);
+                }
+              }, 0);
+            }
             
             // ========================================
             // 记录到 feedback_events（异步）
@@ -3481,7 +3602,13 @@ export async function POST(request: NextRequest) {
                 preferences_applied: !!preferences,
                 isFinal: false,
                 meta: {
-                  returned_job_ids: results.map((j: any) => j.id)
+                  returned_job_ids: results.map((j: any) => j.id),
+                  index_to_id: results.map((j: any) => j.id),
+                  excluded_breakdown: {
+                    from_param: param_excluded_count,
+                    from_memory: memory_added_count,
+                    // feedback_count is logged above; include if available
+                  }
                 }
               }
             }, { "X-MCP-Trace-Id": traceId });
