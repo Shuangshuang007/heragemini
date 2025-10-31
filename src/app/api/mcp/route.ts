@@ -2940,8 +2940,8 @@ export async function POST(request: NextRequest) {
             
             console.log('[MCP] Database query:', JSON.stringify(query, null, 2));
             
-            // 获取更多职位用于筛选，确保有足够的选择
-            const searchLimit = Math.max(limit * 3, 30);
+            // 获取更多职位用于筛选，确保有足够的选择（从30提升到40，便于评分挑选）
+            const searchLimit = Math.max(limit * 3, 40);
             const recentJobs = await collection
               .find(query)
               .sort({ updatedAt: -1, createdAt: -1 })
@@ -3159,36 +3159,30 @@ export async function POST(request: NextRequest) {
             }
             
             // ========================================
-            // PR-1: 更新 AgentKit Memory（异步，非阻塞）
+            // PR-1: 更新 AgentKit Memory（同步，返回前写入）
             // ========================================
             if (ENABLE_MEMORY && session_id) {
               const new_job_ids = recommendedJobs.map(job => job.id);
-              
-              setTimeout(async () => {
-                try {
-                  const memory = new AgentKitMemory();
-                  const context = await memory.getContext(session_id);
-                  
-                  const existing_ids = context?.context?.jobContext?.shown_job_ids || [];
-                  const updated_ids = [...existing_ids, ...new_job_ids].slice(-500);  // 保留最近500个
-                  
-                  await memory.storeContext(session_id, {
-                    jobContext: {
-                      shown_job_ids: updated_ids,
-                      last_returned_ids: new_job_ids,
-                      last_search: {
-                        job_title: searchCriteria.jobTitle,
-                        city: searchCriteria.city,
-                        timestamp: new Date().toISOString()
-                      }
+              try {
+                const memory = new AgentKitMemory();
+                const context = await memory.getContext(session_id);
+                const existing_ids = context?.context?.jobContext?.shown_job_ids || [];
+                const updated_ids = [...existing_ids, ...new_job_ids].slice(-500);  // 保留最近500个
+                await memory.storeContext(session_id, {
+                  jobContext: {
+                    shown_job_ids: updated_ids,
+                    last_returned_ids: new_job_ids,
+                    last_search: {
+                      job_title: searchCriteria.jobTitle,
+                      city: searchCriteria.city,
+                      timestamp: new Date().toISOString()
                     }
-                  });
-                  
-                  console.log(`[MCP] AgentKit Memory updated: ${new_job_ids.length} new jobs added, total ${updated_ids.length} in memory`);
-                } catch (err) {
-                  console.warn('[MCP] AgentKit Memory update failed (non-blocking):', err);
-                }
-              }, 0);
+                  }
+                });
+                console.log(`[MCP] AgentKit Memory updated: ${new_job_ids.length} new jobs added, total ${updated_ids.length} in memory`);
+              } catch (err) {
+                console.warn('[MCP] AgentKit Memory update failed (non-blocking):', err);
+              }
             }
 
             // Phase 2: 添加用户反馈提示文案
@@ -3502,32 +3496,30 @@ export async function POST(request: NextRequest) {
             console.log(`[refine] Returning ${results.length} refined recommendations`);
 
             // ========================================
-            // 更新 AgentKit Memory（异步，非阻塞）
+            // 更新 AgentKit Memory（同步，返回前写入）
             // ========================================
             if (session_id) {
               const returned_ids = results.map((j: any) => j.id).filter(Boolean);
-              setTimeout(async () => {
-                try {
-                  const memory = new AgentKitMemory();
-                  const context = await memory.getContext(session_id);
-                  const existing_ids = context?.context?.jobContext?.shown_job_ids || [];
-                  const updated_ids = [...existing_ids, ...returned_ids].slice(-500); // 滚动窗口 500
-                  await memory.storeContext(session_id, {
-                    jobContext: {
-                      shown_job_ids: updated_ids,
-                      last_returned_ids: returned_ids,
-                      last_search: {
-                        job_title: effectiveJobTitle,
-                        city: effectiveCity,
-                        timestamp: new Date().toISOString()
-                      }
+              try {
+                const memory = new AgentKitMemory();
+                const context = await memory.getContext(session_id);
+                const existing_ids = context?.context?.jobContext?.shown_job_ids || [];
+                const updated_ids = [...existing_ids, ...returned_ids].slice(-500); // 滚动窗口 500
+                await memory.storeContext(session_id, {
+                  jobContext: {
+                    shown_job_ids: updated_ids,
+                    last_returned_ids: returned_ids,
+                    last_search: {
+                      job_title: effectiveJobTitle,
+                      city: effectiveCity,
+                      timestamp: new Date().toISOString()
                     }
-                  });
-                  console.log(`[refine] AgentKit Memory updated: +${returned_ids.length}, total ~${updated_ids.length}`);
-                } catch (err) {
-                  console.warn('[refine] AgentKit Memory update failed (non-blocking):', err);
-                }
-              }, 0);
+                  }
+                });
+                console.log(`[refine] AgentKit Memory updated: +${returned_ids.length}, total ~${updated_ids.length}`);
+              } catch (err) {
+                console.warn('[refine] AgentKit Memory update failed (non-blocking):', err);
+              }
             }
             
             // ========================================
