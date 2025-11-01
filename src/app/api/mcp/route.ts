@@ -3903,6 +3903,40 @@ export async function POST(request: NextRequest) {
             }
 
             // =============================
+            // Record feedback_events (non-blocking)
+            // =============================
+            if (fc && feedback_event_id) {
+              const output_data = {
+                alert: true,
+                run_context: run_context || 'manual',
+                total: results.length,
+                excluded_count: EXCLUDE_SET.size,
+                returned_job_ids: results.map((j: any) => j.id),
+                filters: {
+                  job_title: effectiveTitle,
+                  city: effectiveCity,
+                  company: effectiveCompany,
+                  keywords: effectiveKeywords,
+                  since_iso: sinceDate?.toISOString() || null,
+                  window_hours: hours
+                }
+              };
+              setTimeout(() => {
+                try {
+                  fc.recordEnd(feedback_event_id!, output_data);
+                  const shown_ids = results.map((j: any) => j.id);
+                  fc.updateFeedback(feedback_event_id!, 'shown_jobs', shown_ids);
+                  const likeIds = Array.isArray(liked_job_ids) ? liked_job_ids : [];
+                  const dislikeIds = Array.isArray(disliked_job_ids) ? disliked_job_ids : [];
+                  if (likeIds.length > 0) fc.updateFeedback(feedback_event_id!, 'liked_jobs', likeIds);
+                  if (dislikeIds.length > 0) fc.updateFeedback(feedback_event_id!, 'disliked_jobs', dislikeIds);
+                } catch (e) {
+                  console.warn('[job_alert] feedback record failed:', (e as any)?.message || e);
+                }
+              }, 0);
+            }
+
+            // =============================
             // Format content
             // =============================
             const formatted = results.map((job: any, i: number) => (
