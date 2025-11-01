@@ -2124,6 +2124,35 @@ export async function POST(request: NextRequest) {
     if (body.method === "tools/call") {
       const traceId = crypto.randomUUID();
       const { name, arguments: args } = body.params || {};
+
+      // === Minimal, backend-only session stabilization (no frontend/email required) ===
+      try {
+        const headerSession = request.headers.get('x-session-id')
+          || request.headers.get('x-sessionid')
+          || request.headers.get('x-session')
+          || '';
+        const argSess = args?.session_id ? String(args.session_id) : '';
+
+        let contextKey = '';
+        let source = 'uuid';
+        if (argSess) {
+          contextKey = argSess;
+          source = 'args';
+        } else if (headerSession) {
+          contextKey = headerSession;
+          source = 'header';
+        } else {
+          contextKey = (crypto.randomUUID?.() || Math.random().toString(36).slice(2));
+          source = 'uuid';
+        }
+
+        if (args) (args.session_id = contextKey);
+        console.info('[MCP] context_key:', contextKey);
+        console.info('[MCP] context_key.source:', source);
+      } catch (e) {
+        console.warn('[MCP] context_key init failed (non-blocking):', (e as any)?.message || e);
+      }
+
       console.info("[TRACE]", traceId, { tool: name, args });
 
       try {
@@ -3212,7 +3241,8 @@ export async function POST(request: NextRequest) {
                 // GPT 方案: 暴露本次返回的 job IDs 供下次去重
                 meta: {
                   returned_job_ids: recommendedJobs.map(job => job.id),
-                  index_to_id: recommendedJobs.map(job => job.id)
+                  index_to_id: recommendedJobs.map(job => job.id),
+                  session_id
                 }
               }
             }, { "X-MCP-Trace-Id": traceId });
@@ -3433,15 +3463,25 @@ export async function POST(request: NextRequest) {
             // 如果候选不足，回退查询
             if (candidates.length < limit) {
               console.log('[refine] Not enough candidates, trying fallback query');
-              const fallback = await collection.find({
+              const fbQuery: any = {
                 is_active: { $ne: false },
                 id: { $nin: Array.from(EXCLUDE_SET).slice(-2000) }
-              })
-              .sort({ createdAt: -1 })
-              .limit(searchLimit)
-              .toArray();
+              };
+              if (effectiveCity) {
+                fbQuery.location = { $regex: effectiveCity, $options: 'i' };
+              }
+              if (effectiveJobTitle) {
+                fbQuery.$or = [
+                  { title: { $regex: effectiveJobTitle, $options: 'i' } },
+                  { summary: { $regex: effectiveJobTitle, $options: 'i' } }
+                ];
+              }
+              const fallback = await collection.find(fbQuery)
+                .sort({ createdAt: -1 })
+                .limit(searchLimit)
+                .toArray();
               candidates.push(...fallback);
-              console.log(`[refine] After fallback: ${candidates.length} total candidates`);
+              console.log(`[refine] After fallback: ${candidates.length} total candidates (fbQuery=${JSON.stringify(fbQuery)})`);
             }
             
             // ========================================
@@ -3600,7 +3640,8 @@ export async function POST(request: NextRequest) {
                     from_param: param_excluded_count,
                     from_memory: memory_added_count,
                     // feedback_count is logged above; include if available
-                  }
+                  },
+                  session_id
                 }
               }
             }, { "X-MCP-Trace-Id": traceId });
