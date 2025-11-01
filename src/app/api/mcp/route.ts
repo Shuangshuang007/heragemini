@@ -1025,12 +1025,20 @@ export async function POST(request: NextRequest) {
     // 记录工具调用开始（非阻塞）
     // ============================================
     if (fc && body.method === 'tools/call' && body.params?.name) {
+      // Use unified session key priority: args.session_id -> header -> generated uuid
+      const headerSess = request.headers.get('x-session-id')
+        || request.headers.get('x-sessionid')
+        || request.headers.get('x-session')
+        || '';
+      const argSessPrim = body.params?.arguments?.session_id || '';
+      const sessForFeedback = String(argSessPrim || headerSess || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)));
+
       feedback_event_id = await fc.recordStart(
         body.params.name,
         body.params.arguments || {},
         {
           trace_id: crypto.randomUUID(),
-          session_id: body.params.arguments?.user_email || body.id || 'anonymous',
+          session_id: sessForFeedback,
           user_email: body.params.arguments?.user_email
         }
       ).catch(err => {
@@ -3182,35 +3190,48 @@ export async function POST(request: NextRequest) {
             }
 
             // ============================================
-            // 记录推荐结果到 feedback_events（非阻塞）
+            // 记录推荐结果到 feedback_events（同步 upsert）
             // ============================================
             if (fc && feedback_event_id) {
-              const output_data = {
-                recommendations: recommendedJobs.map(job => ({
-                  job_id: job.id || job.jobIdentifier || job._id?.toString(),
-                  title: job.title,
-                  company: job.company,
-                  location: job.location,
-                  matchScore: job.matchScore,
-                  url: job.url
-                })),
-                total: recommendedJobs.length,
-                search_criteria: {
-                  job_title: searchCriteria.jobTitle,
-                  city: searchCriteria.city
-                },
-                summary: `Recommended ${recommendedJobs.length} jobs: ${recommendedJobs.slice(0, 3).map(j => j.title).join(', ')}${recommendedJobs.length > 3 ? '...' : ''}`
-              };
-              
-              setTimeout(() => {
-                fc.recordEnd(feedback_event_id!, output_data);
-                
-                // Phase 2: 记录本次展示的职位（用于去重）
-                const shown_job_ids = recommendedJobs.map(job => 
-                  job.id || job.jobIdentifier || job._id?.toString()
+              try {
+                const { db } = await connectToMongoDB();
+                const output_data = {
+                  recommendations: recommendedJobs.map(job => ({
+                    job_id: job.id || job.jobIdentifier || job._id?.toString(),
+                    title: job.title,
+                    company: job.company,
+                    location: job.location,
+                    matchScore: job.matchScore,
+                    url: job.url
+                  })),
+                  total: recommendedJobs.length,
+                  search_criteria: {
+                    job_title: searchCriteria.jobTitle,
+                    city: searchCriteria.city
+                  },
+                  summary: `Recommended ${recommendedJobs.length} jobs: ${recommendedJobs.slice(0, 3).map(j => j.title).join(', ')}${recommendedJobs.length > 3 ? '...' : ''}`
+                };
+                await db.collection('feedback_events').updateOne(
+                  { event_id: feedback_event_id },
+                  {
+                    $setOnInsert: {
+                      event_id: feedback_event_id,
+                      session_id: session_id || 'anonymous',
+                      tool: 'recommend_jobs',
+                      input: args,
+                      timestamp: new Date(),
+                      created_at: new Date(),
+                    },
+                    $set: { output: output_data, updated_at: new Date() },
+                    $addToSet: {
+                      'feedback.shown_jobs': { $each: recommendedJobs.map(job => job.id || job.jobIdentifier || job._id?.toString()) }
+                    }
+                  },
+                  { upsert: true }
                 );
-                fc.updateFeedback(feedback_event_id!, 'shown_jobs', shown_job_ids);
-              }, 0);
+              } catch (e) {
+                console.warn('[recommend] feedback sync upsert failed:', (e as any)?.message || e);
+              }
             }
             
             // ========================================
@@ -3589,37 +3610,46 @@ export async function POST(request: NextRequest) {
             }
             
             // ========================================
-            // 记录到 feedback_events（异步）
+            // 记录到 feedback_events（同步 upsert）
             // ========================================
             if (fc && feedback_event_id) {
-              const output_data = {
-                recommendations: results.map((job: any) => ({
-                  job_id: job.id,
-                  title: job.title,
-                  company: job.company,
-                  location: job.location,
-                  personalized_score: job.personalized_score || 50
-                })),
-                total: results.length,
-                excluded_count: EXCLUDE_SET.size,
-                preferences_applied: !!preferences
-              };
-              
-              setTimeout(() => {
-                fc.recordEnd(feedback_event_id!, output_data);
-                
-                // 记录 shown_jobs
-                const shown_ids = results.map((j: any) => j.id);
-                fc.updateFeedback(feedback_event_id!, 'shown_jobs', shown_ids);
-                
-                // 记录 liked/disliked
-                if (liked_job_ids.length > 0) {
-                  fc.updateFeedback(feedback_event_id!, 'liked_jobs', liked_job_ids);
-                }
-                if (disliked_job_ids.length > 0) {
-                  fc.updateFeedback(feedback_event_id!, 'disliked_jobs', disliked_job_ids);
-                }
-              }, 0);
+              try {
+                const { db } = await connectToMongoDB();
+                const output_data = {
+                  recommendations: results.map((job: any) => ({
+                    job_id: job.id,
+                    title: job.title,
+                    company: job.company,
+                    location: job.location,
+                    personalized_score: job.personalized_score || 50
+                  })),
+                  total: results.length,
+                  excluded_count: EXCLUDE_SET.size,
+                  preferences_applied: !!preferences
+                };
+                await db.collection('feedback_events').updateOne(
+                  { event_id: feedback_event_id },
+                  {
+                    $setOnInsert: {
+                      event_id: feedback_event_id,
+                      session_id: session_id || 'anonymous',
+                      tool: 'refine_recommendations',
+                      input: args,
+                      timestamp: new Date(),
+                      created_at: new Date(),
+                    },
+                    $set: { output: output_data, updated_at: new Date() },
+                    $addToSet: {
+                      'feedback.shown_jobs': { $each: results.map((j: any) => j.id) },
+                      ...(liked_job_ids.length > 0 ? { 'feedback.liked_jobs': { $each: liked_job_ids } } : {}),
+                      ...(disliked_job_ids.length > 0 ? { 'feedback.disliked_jobs': { $each: disliked_job_ids } } : {}),
+                    }
+                  },
+                  { upsert: true }
+                );
+              } catch (e) {
+                console.warn('[refine] feedback sync upsert failed:', (e as any)?.message || e);
+              }
             }
             
             // ========================================
@@ -3903,37 +3933,49 @@ export async function POST(request: NextRequest) {
             }
 
             // =============================
-            // Record feedback_events (non-blocking)
+            // Record feedback_events (sync upsert)
             // =============================
             if (fc && feedback_event_id) {
-              const output_data = {
-                alert: true,
-                run_context: run_context || 'manual',
-                total: results.length,
-                excluded_count: EXCLUDE_SET.size,
-                returned_job_ids: results.map((j: any) => j.id),
-                filters: {
-                  job_title: effectiveTitle,
-                  city: effectiveCity,
-                  company: effectiveCompany,
-                  keywords: effectiveKeywords,
-                  since_iso: sinceDate?.toISOString() || null,
-                  window_hours: hours
-                }
-              };
-              setTimeout(() => {
-                try {
-                  fc.recordEnd(feedback_event_id!, output_data);
-                  const shown_ids = results.map((j: any) => j.id);
-                  fc.updateFeedback(feedback_event_id!, 'shown_jobs', shown_ids);
-                  const likeIds = Array.isArray(liked_job_ids) ? liked_job_ids : [];
-                  const dislikeIds = Array.isArray(disliked_job_ids) ? disliked_job_ids : [];
-                  if (likeIds.length > 0) fc.updateFeedback(feedback_event_id!, 'liked_jobs', likeIds);
-                  if (dislikeIds.length > 0) fc.updateFeedback(feedback_event_id!, 'disliked_jobs', dislikeIds);
-                } catch (e) {
-                  console.warn('[job_alert] feedback record failed:', (e as any)?.message || e);
-                }
-              }, 0);
+              try {
+                const { db } = await connectToMongoDB();
+                const output_data = {
+                  alert: true,
+                  run_context: run_context || 'manual',
+                  total: results.length,
+                  excluded_count: EXCLUDE_SET.size,
+                  returned_job_ids: results.map((j: any) => j.id),
+                  filters: {
+                    job_title: effectiveTitle,
+                    city: effectiveCity,
+                    company: effectiveCompany,
+                    keywords: effectiveKeywords,
+                    since_iso: sinceDate?.toISOString() || null,
+                    window_hours: hours
+                  }
+                };
+                await db.collection('feedback_events').updateOne(
+                  { event_id: feedback_event_id },
+                  {
+                    $setOnInsert: {
+                      event_id: feedback_event_id,
+                      session_id: session_id || 'anonymous',
+                      tool: 'job_alert',
+                      input: args,
+                      timestamp: new Date(),
+                      created_at: new Date(),
+                    },
+                    $set: { output: output_data, updated_at: new Date() },
+                    $addToSet: {
+                      'feedback.shown_jobs': { $each: results.map((j: any) => j.id) },
+                      ...(Array.isArray(liked_job_ids) && liked_job_ids.length > 0 ? { 'feedback.liked_jobs': { $each: liked_job_ids } } : {}),
+                      ...(Array.isArray(disliked_job_ids) && disliked_job_ids.length > 0 ? { 'feedback.disliked_jobs': { $each: disliked_job_ids } } : {}),
+                    }
+                  },
+                  { upsert: true }
+                );
+              } catch (e) {
+                console.warn('[job_alert] feedback sync upsert failed:', (e as any)?.message || e);
+              }
             }
 
             // =============================
