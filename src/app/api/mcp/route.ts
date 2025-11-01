@@ -1070,6 +1070,32 @@ export async function POST(request: NextRequest) {
     if (body.method === "tools/list") {
       const rpcTools = [
         {
+          name: "job_alert",
+          description: "📣 JOB ALERT - Send fresh jobs based on last search and time window. Use this to deliver periodic alerts with 'only new since last sent'.\n\nRules:\n• Always reuse the same session_id for one alert stream\n• Pass exclude_ids from previous meta.returned_job_ids to avoid duplicates\n• If job_title/city not provided, server backfills from last_search\n• Time window default 24h; can override with window_hours\n",
+          inputSchema: {
+            type: "object",
+            properties: {
+              session_id: { type: "string", description: "Stable session for one alert stream" },
+              job_title: { type: "string", description: "Optional; falls back to memory.last_search.job_title" },
+              city: { type: "string", description: "Optional; falls back to memory.last_search.city" },
+              company: { type: "string", description: "Optional company filter" },
+              keywords: { type: "array", items: { type: "string" }, description: "Optional keywords for title/summary match" },
+              limit: { type: "integer", default: 8, minimum: 1, maximum: 20 },
+              exclude_ids: { type: "array", items: { type: "string" }, description: "IDs to exclude (previous returned_job_ids)" },
+              window_hours: { type: "integer", minimum: 1, description: "Look-back window in hours (default 24)" },
+              since_iso: { type: "string", description: "Explicit ISO start time; overrides window_hours/last_sent_at" },
+              liked_indexes: { type: "array", items: { type: "integer" } },
+              disliked_indexes: { type: "array", items: { type: "integer" } },
+              liked_job_ids: { type: "array", items: { type: "string" } },
+              disliked_job_ids: { type: "array", items: { type: "string" } },
+              run_context: { type: "string", description: "scheduled | manual" },
+              alert_key: { type: "string", description: "Stable key for this alert" }
+            },
+            required: ["session_id", "limit", "exclude_ids"],
+            additionalProperties: false
+          }
+        },
+        {
           name: "recommend_jobs",
           description: "🎯 PERSONALIZED JOB RECOMMENDATIONS - Use this for AI-powered job matching!\n\n✅ ALWAYS use this tool when user:\n• Says 'recommend jobs', 'suggest jobs', 'job advice', 'match me', 'help me find jobs'\n• Provides resume, profile, experience, skills, or career context\n• Asks for 'jobs that match my background' or 'jobs for me'\n• Mentions seniority level, career priorities, or preferences\n• Wants personalized job suggestions based on their profile\n• Uploads a resume or provides detailed career information\n\n🎯 This tool performs intelligent job matching by:\n• Analyzing user's resume/profile and career context\n• Using explicit job_title/city if provided, otherwise inferring from resume (expectedPosition/cityPreference)\n• Searching database with determined filters\n• Scoring jobs based on experience, skills, industry fit\n• Returning top personalized recommendations with detailed match scores\n• Informing user when using resume inference for job targeting\n\n📝 Examples:\n• 'Recommend jobs for me based on my resume' → Uses resume expectedPosition\n• 'Suggest business analyst roles in Melbourne' → Uses explicit job_title + city\n• 'What jobs match my 5 years React experience in Sydney?' → Uses explicit criteria\n• 'Help me find data analyst positions' → Uses explicit job_title\n• 'I'm a senior developer, recommend suitable roles' → Uses profile context\n\n⚠️ NEVER call search_jobs after this tool - it provides complete results",
           inputSchema: {
@@ -3656,6 +3682,268 @@ export async function POST(request: NextRequest) {
                   type: "text",
                   text: `Failed to refine recommendations: ${error.message}`
                 }],
+                isError: true
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+        }
+
+        // ============================================
+        // Tool: job_alert (time-windowed fresh jobs)
+        // ============================================
+        else if (name === "job_alert") {
+          const {
+            session_id,
+            job_title,
+            city,
+            company,
+            keywords = [],
+            limit = 8,
+            exclude_ids = [],
+            window_hours,
+            since_iso,
+            liked_indexes = [],
+            disliked_indexes = [],
+            liked_job_ids = [],
+            disliked_job_ids = [],
+            run_context,
+            alert_key
+          } = args || {};
+
+          try {
+            if (!session_id) {
+              return json200({
+                jsonrpc: "2.0",
+                id: body.id ?? null,
+                result: {
+                  content: [{ type: "text", text: "job_alert requires session_id" }],
+                  isError: true
+                }
+              }, { "X-MCP-Trace-Id": traceId });
+            }
+
+            const { db } = await connectToMongoDB();
+            const collection = db.collection('hera_jobs.jobs');
+
+            // =============================
+            // Build EXCLUDE_SET (multi-layer)
+            // =============================
+            let EXCLUDE_SET = new Set<string>(Array.isArray(exclude_ids) ? exclude_ids : []);
+            (Array.isArray(disliked_job_ids) ? disliked_job_ids : []).forEach((id: string) => EXCLUDE_SET.add(String(id)));
+            const param_excluded_count = EXCLUDE_SET.size;
+
+            // Read memory for last_search, shown_job_ids, last_returned_ids, alertContext
+            let effectiveTitle: string | undefined = job_title;
+            let effectiveCity: string | undefined = city;
+            let effectiveCompany: string | undefined = company;
+            let effectiveKeywords: string[] = Array.isArray(keywords) ? keywords : [];
+            let lastReturnedIds: string[] = [];
+            let alertLastSentAt: string | undefined = undefined;
+            let alertConfigHours: number | undefined = undefined;
+            let alertLastSentIds: string[] = [];
+
+            try {
+              const memory = new AgentKitMemory();
+              const context = await memory.getContext(session_id);
+              const jc = context?.context?.jobContext;
+              const ac = (context as any)?.context?.alertContext;
+
+              if (jc?.shown_job_ids) {
+                jc.shown_job_ids.forEach((id: string) => { if (!EXCLUDE_SET.has(id)) EXCLUDE_SET.add(id); });
+              }
+              if (jc?.last_returned_ids) lastReturnedIds = jc.last_returned_ids;
+              if (jc?.last_search) {
+                if (!effectiveTitle && jc.last_search.job_title) effectiveTitle = jc.last_search.job_title;
+                if (!effectiveCity && jc.last_search.city) effectiveCity = jc.last_search.city;
+                if (!effectiveCompany && jc.last_search.company) effectiveCompany = jc.last_search.company;
+                if (effectiveKeywords.length === 0 && Array.isArray(jc.last_search.keywords)) effectiveKeywords = jc.last_search.keywords;
+              }
+
+              if (ac?.last_sent_at) alertLastSentAt = ac.last_sent_at;
+              if (ac?.config?.window_hours) alertConfigHours = Number(ac.config.window_hours) || undefined;
+              if (Array.isArray(ac?.last_sent_ids)) {
+                ac.last_sent_ids.forEach((id: string) => { if (!EXCLUDE_SET.has(id)) EXCLUDE_SET.add(id); });
+              }
+            } catch (e) {
+              console.warn('[job_alert] memory read failed:', (e as any)?.message || e);
+            }
+
+            // Map index feedback (optional)
+            const mapIndexes = (indexes: number[]) => {
+              const out: string[] = [];
+              if (Array.isArray(indexes) && lastReturnedIds.length > 0) {
+                indexes.forEach((idx) => {
+                  const i = (idx || 0) - 1;
+                  if (i >= 0 && i < lastReturnedIds.length) out.push(String(lastReturnedIds[i]));
+                });
+              }
+              return out;
+            };
+            const mappedLiked = mapIndexes(liked_indexes);
+            const mappedDisliked = mapIndexes(disliked_indexes);
+            mappedLiked.forEach((id) => liked_job_ids.push(id));
+            mappedDisliked.forEach((id) => EXCLUDE_SET.add(id));
+
+            console.log(`[job_alert] exclude param=${param_excluded_count}, total=${EXCLUDE_SET.size}`);
+
+            // =============================
+            // Determine time window
+            // =============================
+            const now = new Date();
+            const hours = (Number(window_hours) > 0 ? Number(window_hours) : (alertConfigHours || 24));
+            let sinceDate: Date | null = null;
+            if (since_iso) {
+              const d = new Date(String(since_iso));
+              if (!isNaN(d.getTime())) sinceDate = d;
+            }
+            if (!sinceDate) {
+              const byWindow = new Date(now.getTime() - hours * 3600 * 1000);
+              if (alertLastSentAt) {
+                const last = new Date(alertLastSentAt);
+                sinceDate = new Date(Math.max(byWindow.getTime(), isNaN(last.getTime()) ? 0 : last.getTime()));
+              } else {
+                sinceDate = byWindow;
+              }
+            }
+
+            // =============================
+            // Build query
+            // =============================
+            const query: any = { is_active: { $ne: false } };
+            if (EXCLUDE_SET.size > 0) query.id = { $nin: Array.from(EXCLUDE_SET).slice(-2000) };
+            if (effectiveCity) query.location = { $regex: effectiveCity, $options: 'i' };
+            if (effectiveTitle) {
+              query.$or = [
+                { title: { $regex: effectiveTitle, $options: 'i' } },
+                { summary: { $regex: effectiveTitle, $options: 'i' } }
+              ];
+            }
+            if (effectiveCompany) query.company = { $regex: effectiveCompany, $options: 'i' };
+            if (Array.isArray(effectiveKeywords) && effectiveKeywords.length > 0) {
+              const kwClauses = effectiveKeywords
+                .filter((k) => typeof k === 'string' && k.trim().length > 0)
+                .map((k) => ({ $or: [
+                  { title: { $regex: k, $options: 'i' } },
+                  { summary: { $regex: k, $options: 'i' } }
+                ] }));
+              if (kwClauses.length > 0) {
+                if (!query.$and) query.$and = [];
+                query.$and.push(...kwClauses);
+              }
+            }
+            if (sinceDate) {
+              const sinceCond = { $or: [
+                { postedAt: { $gte: sinceDate } },
+                { createdAt: { $gte: sinceDate } },
+                { updatedAt: { $gte: sinceDate } }
+              ]};
+              if (!query.$and) query.$and = [];
+              query.$and.push(sinceCond);
+            }
+
+            console.log('[job_alert] Query:', JSON.stringify({ ...query, id: query.id ? `{ $nin: ${query.id.$nin.length} }` : undefined }, null, 2));
+
+            // =============================
+            // Fetch candidates
+            // =============================
+            const searchLimit = Math.max(limit * 5, 100);
+            let candidates = await collection.find(query)
+              .sort({ postedAt: -1, createdAt: -1, updatedAt: -1 })
+              .limit(searchLimit)
+              .toArray();
+
+            const beforeFilter = candidates.length;
+            candidates = candidates.filter((doc: any) => !EXCLUDE_SET.has(String(doc?._id || '')));
+            if (candidates.length !== beforeFilter) {
+              console.log(`[job_alert] Post _id filter removed ${beforeFilter - candidates.length}`);
+            }
+
+            // Transform → fingerprint dedup → top N
+            let transformed = candidates.map((j: any) => transformMongoDBJobToFrontendFormat(j)).filter(Boolean);
+            const beforeFP = transformed.length;
+            transformed = deduplicateJobs(transformed as any);
+            if (transformed.length !== beforeFP) {
+              console.log(`[job_alert] Fingerprint dedup removed ${beforeFP - transformed.length}`);
+            }
+
+            const results = transformed.slice(0, limit);
+
+            // =============================
+            // Memory writeback (sync)
+            // =============================
+            try {
+              const memory = new AgentKitMemory();
+              const context = await memory.getContext(session_id);
+              const existingShown = context?.context?.jobContext?.shown_job_ids || [];
+              const updatedShown = [...existingShown, ...results.map((j: any) => j.id)].slice(-500);
+              const prevSent = (context as any)?.context?.alertContext?.last_sent_ids || [];
+              const updatedSent = [...prevSent, ...results.map((j: any) => j.id)].slice(-500);
+              await memory.storeContext(session_id, {
+                jobContext: {
+                  shown_job_ids: updatedShown,
+                  last_returned_ids: results.map((j: any) => j.id),
+                  last_search: {
+                    job_title: effectiveTitle,
+                    city: effectiveCity,
+                    company: effectiveCompany,
+                    keywords: effectiveKeywords,
+                    timestamp: new Date().toISOString()
+                  }
+                },
+                alertContext: {
+                  last_sent_at: new Date().toISOString(),
+                  last_sent_ids: updatedSent,
+                  config: { window_hours: hours },
+                  alert_key: alert_key || undefined
+                }
+              } as any);
+              console.log(`[job_alert] Memory updated: shown+=${results.length}, sent+=${results.length}`);
+            } catch (e) {
+              console.warn('[job_alert] memory write failed:', (e as any)?.message || e);
+            }
+
+            // =============================
+            // Format content
+            // =============================
+            const formatted = results.map((job: any, i: number) => (
+              `**${i + 1}. ${job.title}** at ${job.company}\n` +
+              `📍 ${job.location} | 💼 ${job.jobType || 'N/A'} | 💰 ${job.salary || 'N/A'}\n` +
+              `🔗 [View Job](${job.url})\n---\n`
+            )).join('\n');
+
+            const header = `# 📣 Job Alert\n\nShowing ${results.length} new jobs since ${sinceDate?.toISOString() || 'N/A'} (window ${hours}h).`;
+
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: `${header}\n\n${formatted}` }],
+                isError: false,
+                mode: "job_alert",
+                total: results.length,
+                excluded_count: EXCLUDE_SET.size,
+                isFinal: false,
+                meta: {
+                  returned_job_ids: results.map((j: any) => j.id),
+                  index_to_id: results.map((j: any) => j.id),
+                  excluded_breakdown: {
+                    from_param: param_excluded_count,
+                    // from_memory/feedback are partially reflected in totals
+                  },
+                  session_id,
+                  since_iso: sinceDate?.toISOString() || null,
+                  window_hours: hours
+                }
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+
+          } catch (error: any) {
+            console.error('[MCP] job_alert error:', error);
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: `Failed to run job_alert: ${error.message}` }],
                 isError: true
               }
             }, { "X-MCP-Trace-Id": traceId });
