@@ -24,6 +24,7 @@ import { AgentKitPlanner } from '../../../lib/agentkit/planner';
 import { AgentKitExecutor } from '../../../lib/agentkit/executor';
 import { AgentKitMemory } from '../../../lib/agentkit/memory';
 import { FeedbackCollector } from '../../../lib/feedback/FeedbackCollector';
+import { getDb } from '../../../lib/db/mongoClient';
 import {
   deduplicateJobs,
   enhanceJobsWithSources,
@@ -3194,7 +3195,7 @@ export async function POST(request: NextRequest) {
             // ============================================
             if (fc && feedback_event_id) {
               try {
-                const { db } = await connectToMongoDB();
+                const db = await getDb();
                 const output_data = {
                   recommendations: recommendedJobs.map(job => ({
                     job_id: job.id || job.jobIdentifier || job._id?.toString(),
@@ -3614,7 +3615,7 @@ export async function POST(request: NextRequest) {
             // ========================================
             if (fc && feedback_event_id) {
               try {
-                const { db } = await connectToMongoDB();
+                const db = await getDb();
                 const output_data = {
                   recommendations: results.map((job: any) => ({
                     job_id: job.id,
@@ -3937,7 +3938,7 @@ export async function POST(request: NextRequest) {
             // =============================
             if (fc && feedback_event_id) {
               try {
-                const { db } = await connectToMongoDB();
+                const db = await getDb();
                 const output_data = {
                   alert: true,
                   run_context: run_context || 'manual',
