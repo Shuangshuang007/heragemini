@@ -93,7 +93,7 @@ export default function ResourcesPage() {
             url: '/resources/interview-tips/christmas-casuals/muji'
           }
         ],
-        totalCount: 8,
+        totalCount: 10,
         showAll: true
       },
       {
@@ -164,7 +164,7 @@ export default function ResourcesPage() {
             url: '/resources/interview-tips/graduate-interns/kpmg'
           }
         ],
-        totalCount: 8,
+        totalCount: 14,
         showAll: true
       },
       {

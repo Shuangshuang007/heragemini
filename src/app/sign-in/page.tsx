@@ -29,6 +29,13 @@ export default function SignInPage() {
             Continue with Google
           </button>
           <button
+            className="w-full flex items-center justify-center border border-gray-300 rounded-md py-3 mb-4 text-lg font-medium hover:bg-gray-100"
+            onClick={() => signIn("linkedin")}
+          >
+            <img src="/linkedin-icon.svg" alt="LinkedIn" className="w-6 h-6 mr-2" />
+            Continue with LinkedIn
+          </button>
+          <button
             className="w-full flex items-center justify-center border border-gray-300 rounded-md py-3 text-lg font-medium hover:bg-gray-100"
             onClick={() => signIn("github")}
           >

@@ -1,9 +1,34 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import GitHubProvider from "next-auth/providers/github";
+import LinkedInProvider from "next-auth/providers/linkedin";
 
 const handler = NextAuth({
+  debug: true, // 调试期先开着
   providers: [
+    LinkedInProvider({
+      clientId: process.env.LINKEDIN_CLIENT_ID!,
+      clientSecret: process.env.LINKEDIN_CLIENT_SECRET!,
+
+      // 让 NextAuth 使用 LinkedIn 的 OIDC 配置
+      wellKnown: "https://www.linkedin.com/oauth/.well-known/openid-configuration",
+
+      // 只保留 params；不要自定义 authorization.url/token.url/userinfo.url/issuer
+      authorization: { params: { scope: "openid profile email" } },
+
+      // 可留，可删都行；留着不影响
+      client: { token_endpoint_auth_method: "client_secret_post" },
+
+      // OIDC 的用户映射
+      profile(p: any) {
+        return {
+          id: p.sub,
+          name: p.name ?? [p.given_name, p.family_name].filter(Boolean).join(" "),
+          email: p.email,
+          image: p.picture,
+        };
+      },
+    }),
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
