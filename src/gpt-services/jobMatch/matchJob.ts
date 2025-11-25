@@ -14,6 +14,20 @@ interface JobMatchRequest {
   jobDescription: string;
   jobRequirements: string[];
   jobLocation: string;
+  // ✅ 新增字段（来自数据库）
+  skillsMustHave?: string[];
+  skillsNiceToHave?: string[];
+  keyRequirements?: string[];
+  highlights?: string[];
+  workMode?: string;
+  salary?: string;
+  industry?: string;
+  workRights?: {
+    country?: string;
+    requiresStatus?: string;
+    sponsorship?: 'required' | 'available' | 'not_available' | 'unknown';
+    citizenshipRequired?: boolean;
+  };
   userProfile: {
     jobTitles: string[];
     skills: string[];
@@ -28,6 +42,8 @@ interface JobMatchRequest {
       company: string;
       position: string;
     }>;
+    workingRightsAU?: string;
+    workingRightsOther?: string;
   };
 }
 
@@ -92,6 +108,56 @@ const INVALID_KEYWORDS = [
   'team player', 'communication skills', 'customer care', 'multitasking', 'focus', 'commitment',
   'empathy', 'positive attitude', 'attitude', 'work ethic', 'adaptability', 'flexibility', 'problem solving', 'initiative', 'motivation', 'collaboration', 'interpersonal', 'punctuality', 'reliability', 'dependability', 'organization', 'organisational', 'time management', 'attention to detail', 'detail oriented', 'self-motivated', 'self starter', 'leadership', 'responsibility', 'creativity', 'critical thinking', 'willingness to learn', 'fast learner', 'passion', 'dedication', 'drive', 'energy', 'enthusiasm', 'integrity', 'trustworthy', 'respect', 'patience', 'work independently', 'work under pressure', 'work as part', 'work as a team', 'work collaboratively', 'work well with others', 'good attitude', 'good communication', 'good listener', 'good team player', 'good work ethic', 'good organizational', 'good organisational', 'good time management', 'good attention to detail', 'good problem solving', 'good initiative', 'good motivation', 'good collaboration', 'good interpersonal', 'good punctuality', 'good reliability', 'good dependability', 'good organization', 'good organisational', 'good self-motivation', 'good self starter', 'good leadership', 'good responsibility', 'good creativity', 'good critical thinking', 'good willingness to learn', 'good fast learner', 'good passion', 'good dedication', 'good drive', 'good energy', 'good enthusiasm', 'good integrity', 'good trustworthy', 'good respect', 'good patience', 'good work independently', 'good work under pressure', 'good work as part', 'good work as a team', 'good work collaboratively', 'good work well with others'
 ];
+/**
+ * 检查工作权限匹配情况（简化版）
+ * 只处理明确的 citizenshipRequired 和 requiresStatus
+ * 用户未填写时不减分，用户填写但不满足时减分 10%
+ * @returns penalty: 减分百分比 (0 或 0.1)
+ */
+function checkWorkRightsMatch(
+  jobWorkRights?: { country?: string; requiresStatus?: string; sponsorship?: string; citizenshipRequired?: boolean },
+  userWorkingRightsAU?: string,
+  userWorkingRightsOther?: string
+): number {
+  // 如果 Job 没有工作权限要求，不减分
+  if (!jobWorkRights) {
+    return 0;
+  }
+
+  const userWR = userWorkingRightsAU || userWorkingRightsOther || '';
+  
+  // 用户未填写工作权限：不减分也不加分（保持原样）
+  if (!userWR || !userWR.trim()) {
+    return 0;
+  }
+
+  const userWRLower = userWR.toLowerCase();
+
+  // 检查 citizenshipRequired
+  if (jobWorkRights.citizenshipRequired) {
+    const isCitizen = /citizen/i.test(userWR);
+    if (!isCitizen) {
+      return 0.1; // 10% 减分
+    }
+  }
+
+  // 检查 requiresStatus（如 "Permanent Resident", "Full Work Rights"）
+  if (jobWorkRights.requiresStatus) {
+    const requiresStatusLower = jobWorkRights.requiresStatus.toLowerCase();
+    const hasRequiredStatus = 
+      userWRLower.includes(requiresStatusLower) || 
+      (requiresStatusLower.includes('permanent') && /permanent|pr/i.test(userWR)) ||
+      (requiresStatusLower.includes('full') && /full.*work|temporary.*full/i.test(userWR));
+    
+    if (!hasRequiredStatus) {
+      return 0.1; // 10% 减分
+    }
+  }
+
+  // 默认匹配，不减分
+  return 0;
+}
+
 function filterKeyRequirements(raw: string[]): string[] {
   return raw
     .map(req => req.trim())
@@ -116,234 +182,196 @@ export async function calculateMatchScore(
   keyRequirements: string[]; 
   analysis: string 
 }> {
-  const prompt = `
-    As a professional career advisor, analyze how well I match this job position based on my profile.
-    
-    User Type: ${userType === 'opportunity' ? 'Good Opportunity Seeker' : 
-                userType === 'fit' ? 'Good Fit Seeker' : 'Neutral Seeker'}
-    
-    Job Details:
-    - Title: ${jobData.jobTitle}
-    - Description: ${jobData.jobDescription}
-    - Location: ${jobData.jobLocation}
-    - Required Skills: ${jobData.jobRequirements.join(', ')}
-    
-    My Profile:
-    - Skills: ${userProfile.skills.join(', ') || 'Not specified'}
-    - Location: ${userProfile.city}
-    - Seniority Level: ${userProfile.seniority}
-    - Open to Relocation: ${userProfile.openToRelocate ? 'Yes' : 'No'}
-    - Career Priorities: ${userProfile.careerPriorities?.join(', ') || 'Not specified'}
-    - Expected Position: ${userProfile.expectedPosition || 'Not specified'}
-    - Current Position: ${userProfile.currentPosition || 'Not specified'}
-    
-    Please provide:
-    1. 生成四个分数，全部为50-95之间的整数，且每项分数需细致分布（如每1分或2分一个档位）：
-       - Experience Score（50-95）
-       - Industry Score（50-95）
-       - Skills Score（50-90，最高不能超过90）
-       - Other Score（50-95，综合文化契合、亮点等）
-    2. Match Score = 0.3*Experience + 0.35*Skills + 0.2*Industry + 0.15*Other，四舍五入为整数。
-       - 如果职位为Corporate Direct，Match Score不变；
-       - 否则Match Score乘0.95，最大不超过95。
-       - Match Score必须严格等于上述加权结果，不能随意主观调整。
-       - 所有分数必须看上去合理，不能出现主分低于所有子分的情况。
-    3. 至少有两项分数不同，不能全部相同或过于接近。
-    4. 只输出如下格式，不输出任何解释或理由：
-Experience: [整数]
-Industry: [整数]
-Skills: [整数]
-Other: [整数]
-Score: [整数]
+  // 从 jobData 中提取 must-have 和 nice-to-have skills（如果可用）
+  const jobSkillsMustHave = (jobData as any).skillsMustHave || [];
+  const jobSkillsNiceToHave = (jobData as any).skillsNiceToHave || [];
+  const jobKeyRequirements = (jobData as any).keyRequirements || [];
+  const jobHighlights = (jobData as any).highlights || [];
+  const jobWorkMode = (jobData as any).workMode || '';
+  const jobSalary = (jobData as any).salary || '';
+  const jobIndustry = (jobData as any).industry || '';
 
-    5. A match score between 50-95 based on my profile and the job requirements
-    2. Provide 3-4 structured highlights, each as a single sentence:
-       1) State the industry/major business, department or team, and the experience level required (e.g., "A global software company (product team) seeking a senior engineer with 8+ years experience")
-       2) Clearly state the core responsibilities using strong action verbs and nouns (e.g., "Lead .NET solution development and modernise legacy platforms", "Develop and maintain React components, ensure UI/UX quality, and collaborate across teams")
-       3) List the key skills or qualifications required (e.g., "Requires .NET, SQL, JavaScript, Agile/CI-CD; Azure/cloud a plus")
-       4) State any special requirements or unique benefits, such as citizenship, PR, visa, working rights, or notable perks. Do NOT mention location or city. If there are no special requirements or unique benefits, leave this blank (do NOT output any default or placeholder text such as 'No special requirements or unique benefits mentioned').
-    3. A brief job list summary (1 sentence, max 20 words) that includes:
-       - Company industry/type/scale
-       - Core job responsibilities or key requirements
-       - Location (city name only)
-       Format: "[Company Info] seeking [Position] in [City]"
-    4. A detailed job summary divided into three sections for the job detail panel:
-       - Who we are: Brief company introduction and culture
-       - Who we are looking for: Key requirements and ideal candidate profile
-       - Benefits and Offerings: What makes this position attractive
-    5. Key Requirements (2-4 most important hard requirements):
-       Only include technical skills, certifications, licenses, or hard credentials.
-       Do NOT include location, years of experience, soft skills, or generic terms (e.g., do NOT include "Melbourne", "Experience", "Team player", "Communication skills", etc).
-       IMPORTANT: When extracting experience requirements, carefully distinguish between:
-       - Candidate experience requirements (e.g., "5+ years experience", "senior level")
-       - Company history descriptions (e.g., "Over our 24 years", "Our 55-year history", "We've been established for 30 years")
-       If the text mentions company history, organization tenure, or establishment dates, DO NOT extract those as candidate experience requirements.
-       Each requirement must be 3 words or less.
-       Return as a comma-separated list, e.g.: "CPA, React, AWS, ASP Level 2".
-       If none, return empty.
-    6. A comprehensive matching analysis written in paragraphs:
+  const prompt = `As a professional career advisor, analyze how well I match this job position based on my profile.
 
-       a) Overview (1-2 paragraphs):
-          Provide a holistic assessment of how well I match this position, considering both technical and cultural fit.
-          Include key factors that influenced the match score.
+Job Details:
+- Title: ${jobData.jobTitle}
+- Description: ${jobData.jobDescription}
+- Location: ${jobData.jobLocation}
+${jobIndustry ? `- Industry: ${jobIndustry}` : ''}
+${jobWorkMode ? `- Work Mode: ${jobWorkMode}` : ''}
+${jobSalary ? `- Salary: ${jobSalary}` : ''}
+${jobSkillsMustHave.length > 0 ? `- Must-Have Skills: ${jobSkillsMustHave.join(', ')}` : ''}
+${jobSkillsNiceToHave.length > 0 ? `- Nice-to-Have Skills: ${jobSkillsNiceToHave.join(', ')}` : ''}
+${jobKeyRequirements.length > 0 ? `- Key Requirements: ${jobKeyRequirements.join(', ')}` : ''}
+${jobData.jobRequirements.length > 0 && jobSkillsMustHave.length === 0 ? `- Required Skills: ${jobData.jobRequirements.join(', ')}` : ''}
 
-       b) Strengths to Stand Out (1 paragraph):
-          Highlight my strongest matching points and competitive advantages for this position.
-          Focus on direct matches in skills, experience, and qualifications.
+My Profile:
+- Skills: ${userProfile.skills.join(', ') || 'Not specified'}
+- Location: ${userProfile.city}
+- Seniority Level: ${userProfile.seniority}
+- Open to Relocation: ${userProfile.openToRelocate ? 'Yes' : 'No'}
+- Career Priorities: ${userProfile.careerPriorities?.join(', ') || 'Not specified'}
+- Expected Position: ${userProfile.expectedPosition || 'Not specified'}
+- Current Position: ${userProfile.currentPosition || 'Not specified'}
 
-       c) Potential Improvement Areas (1 paragraph):
-          Address gaps in my required skills or experience.
-          Provide specific suggestions for my application process (focus only on application-stage advice).
-          Note any immediate steps that could strengthen my application.
+Scoring dimensions (each 50–95, integer):
 
-       d) Transferable Advantages (1 paragraph):
-          Discuss my relevant skills and experiences that, while not direct matches, could add value.
-          Explain how these transferable skills apply to the role.
+1) ExperienceScore: years, seniority, and similar responsibilities.
 
-       e) Other Considerations (optional, 1 paragraph):
-          Include any additional factors worth noting (e.g., my international experience, industry transitions).
-          Mention any unique circumstances that could influence my application.
-    
-    For Good Opportunity Seekers, prioritize:
-    - Company reputation and funding status
-    - Competitive compensation mentions
-    - Position level vs my expected position
-    - Required qualifications and experience
-    
-    For Good Fit Seekers, prioritize:
-    - Career priorities alignment
-    - Work-life balance mentions
-    - Industry and functional fit
-    - Required qualifications and experience
-    
-    Consider location compatibility and highlight any significant location differences.
-    
-    Format your response as:
-    Score: [number]
-    
-    Highlights:
-    • [point 1]
-    • [point 2]
-    • [point 3]
-    
-    List Summary:
-    [1 sentence summary]
-    
-    Detailed Summary:
-    Who we are:
-    [paragraph]
-    
-    Who we are looking for:
-    [paragraph]
-    
-    Benefits and Offerings:
-    [paragraph]
-    
-    Key Requirements:
-    [requirement1, requirement2, requirement3, requirement4]
-    
-    Analysis:
-    Overview:
-    [1-2 paragraphs assessing overall match quality]
+2) SkillsScore: coverage of must-have skills first, then nice-to-haves.
 
-    Strengths to Stand Out:
-    [1 paragraph highlighting key matching points]
+3) IndustryScore: match with job industry and domain context.
 
-    Potential Improvement Areas:
-    [1 paragraph addressing gaps and application advice]
+4) OtherScore: location fit, career priorities, and any extra good/bad signals.
 
-    Transferable Advantages:
-    [1 paragraph discussing relevant indirect matches]
+Compute MatchScore like this (do not change the formula):
 
-    Other Considerations:
-    [1 paragraph on additional factors, if applicable]
-    `;
+MatchScore = round(0.3 * ExperienceScore + 0.3 * SkillsScore + 0.2 * IndustryScore + 0.15 * OtherScore)
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo-1106",
-    messages: [
-      {
-        role: "system",
-        content: "You are a professional career advisor providing detailed job match analysis and scoring."
-      },
-      {
-        role: "user",
-        content: prompt
+Guidelines:
+
+- Be strict. 
+
+  50–65 = weak match, 66–80 = medium, 81–90 = strong, 91–95 = exceptional.
+
+- If must-have skills are mostly missing, SkillsScore must stay below 70 and MatchScore below 70.
+
+- If location is clearly impossible (e.g. candidate cannot relocate and job is onsite in another country), OtherScore should be low.
+
+Match summary (important):
+
+- ONE sentence, max 25 words.
+
+- Explain briefly WHY the match is good or limited.
+
+- Mention seniority/years plus 1–2 key skills or domain aspects.
+
+- Do NOT explain the formula. Do NOT repeat raw scores. Avoid generic phrases like "great match" without reasons.
+
+Return JSON ONLY, no extra text, in this exact format:
+
+{
+  "experienceScore": 82,
+  "industryScore": 78,
+  "skillsScore": 88,
+  "otherScore": 70,
+  "matchScore": 83,
+  "matchSummary": "8+ years .NET and cloud experience, strong fit for senior backend role in fintech with good alignment to Sydney location and growth priorities."
+}
+`;
+
+  // ✅ 模型 fallback：优先使用 gpt-4o-mini，失败则回退到 gpt-4.1-mini
+  const models = ['gpt-4o-mini', 'gpt-4.1-mini'];
+  let completion;
+  let lastError;
+  
+  for (const model of models) {
+    try {
+      completion = await openai.chat.completions.create({
+        model: model,
+        messages: [
+          {
+            role: "system",
+            content: "You are a professional career advisor providing job match analysis and scoring. Always return valid JSON only, no extra text."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        response_format: { type: "json_object" }
+      });
+      console.log(`[JobMatch] Successfully used model: ${model}`);
+      break; // 成功则跳出循环
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`[JobMatch] Model ${model} failed, trying fallback...`, error.message);
+      if (model === models[models.length - 1]) {
+        // 如果所有模型都失败，抛出最后一个错误
+        throw error;
       }
-    ],
-    temperature: 0.7,
-  });
+    }
+  }
+  
+  if (!completion) {
+    throw lastError || new Error('Failed to get completion from any model');
+  }
 
   const response = completion.choices[0].message.content || '';
   
-  // 解析子分数
-  const experienceMatch = response.match(/Experience:\s*(\d+)/i);
-  const industryMatch = response.match(/Industry:\s*(\d+)/i);
-  const skillsMatch = response.match(/Skills:\s*(\d+)/i);
-  const otherMatch = response.match(/Other:\s*(\d+)/i);
+  // 解析 JSON 响应
+  let parsedResponse: {
+    experienceScore?: number;
+    industryScore?: number;
+    skillsScore?: number;
+    otherScore?: number;
+    matchScore?: number;
+    matchSummary?: string;
+  } = {};
   
-  const subScores = {
-    experience: experienceMatch ? Math.min(Math.max(parseInt(experienceMatch[1]), 60), 95) : 75,
-    industry: industryMatch ? Math.min(Math.max(parseInt(industryMatch[1]), 60), 95) : 75,
-    skills: skillsMatch ? Math.min(Math.max(parseInt(skillsMatch[1]), 60), 90) : 75,
-    other: otherMatch ? Math.min(Math.max(parseInt(otherMatch[1]), 60), 95) : 75
-  };
-
-  // 应用平台权重和位置权重到子分数
-  const platformWeight = (jobData.platform || '').toLowerCase() === 'corporatedirect' ? 1.0 : 0.95;
-  const locationWeight = getLocationWeight(jobData.jobLocation, userProfile.city);
-  const totalWeight = platformWeight * locationWeight;
+  try {
+    // 尝试直接解析 JSON
+    parsedResponse = JSON.parse(response);
+  } catch (error) {
+    // 如果直接解析失败，尝试提取 JSON 部分
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        parsedResponse = JSON.parse(jsonMatch[0]);
+      } catch (e) {
+        console.error('[JobMatch] Failed to parse JSON response:', e);
+      }
+    }
+  }
   
-  const adjustedSubScores = {
-    experience: Math.round(subScores.experience * totalWeight),
-    skills: Math.round(subScores.skills * totalWeight),
-    industry: Math.round(subScores.industry * totalWeight),
-    other: Math.round(subScores.other * totalWeight)
-  };
-
-  // 使用调整后的子分数计算总分
-  const calculatedScore = Math.round(
-    0.3 * adjustedSubScores.experience + 
-    0.35 * adjustedSubScores.skills + 
-    0.2 * adjustedSubScores.industry + 
-    0.15 * adjustedSubScores.other
+  // 提取分数（确保在有效范围内）
+  const experienceScore = Math.min(Math.max(parsedResponse.experienceScore || 75, 50), 95);
+  const industryScore = Math.min(Math.max(parsedResponse.industryScore || 75, 50), 95);
+  const skillsScore = Math.min(Math.max(parsedResponse.skillsScore || 75, 50), 90);
+  let otherScore = Math.min(Math.max(parsedResponse.otherScore || 75, 50), 95);
+  
+  // ✅ 工作权限匹配检查（在 OtherScore 基础上按百分比减分）
+  const workRightsPenalty = checkWorkRightsMatch(
+    (jobData as any).workRights,
+    userProfile.workingRightsAU,
+    userProfile.workingRightsOther
   );
-
-  let score = Math.min(calculatedScore, 95);
   
-  // 提取 highlights
-  const highlightsMatch = response.match(/Highlights:\n((?:•[^\n]+\n?)+)/);
-  const highlights = highlightsMatch 
-    ? highlightsMatch[1].split('\n').filter(line => line.trim().startsWith('•')).map(line => line.trim().substring(1).trim())
-    : [];
+  if (workRightsPenalty > 0) {
+    const originalOtherScore = otherScore;
+    otherScore = Math.max(50, Math.round(otherScore * (1 - workRightsPenalty)));
+    console.log(`[WorkRights] Penalty applied: ${originalOtherScore} → ${otherScore} (${(workRightsPenalty * 100).toFixed(0)}% reduction)`);
+  }
   
-  // 提取 list summary
-  const listSummaryMatch = response.match(/List Summary:\n([\s\S]*?)(?=\n\nDetailed Summary:)/);
-  const listSummary = listSummaryMatch ? listSummaryMatch[1].trim() : '';
+  // 使用新公式计算 MatchScore
+  const calculatedMatchScore = Math.round(
+    0.3 * experienceScore + 
+    0.3 * skillsScore + 
+    0.2 * industryScore + 
+    0.15 * otherScore
+  );
   
-  // 提取 detailed summary
-  const detailedSummaryMatch = response.match(/Detailed Summary:\n([\s\S]*?)(?=\n\nAnalysis:)/);
-  const detailedSummary = detailedSummaryMatch ? detailedSummaryMatch[1].trim() : '';
+  // 使用 GPT 返回的 matchScore，如果无效则使用计算值
+  const matchScore = parsedResponse.matchScore && parsedResponse.matchScore >= 50 && parsedResponse.matchScore <= 95
+    ? parsedResponse.matchScore
+    : Math.min(Math.max(calculatedMatchScore, 50), 95);
   
-  // 提取 key requirements
-  const keyRequirementsMatch = response.match(/Key Requirements:\n([\s\S]*?)(?=\n\nAnalysis:)/);
-  const keyRequirementsRaw = keyRequirementsMatch 
-    ? keyRequirementsMatch[1].trim().split(',').map(req => req.trim()).filter(req => req.length > 0)
-    : [];
-  const keyRequirements = filterKeyRequirements(keyRequirementsRaw);
-  
-  // 提取详细分析
-  const analysisMatch = response.match(/Analysis:\n([\s\S]*?)$/);
-  const analysis = analysisMatch ? analysisMatch[1].trim() : '';
+  const matchSummary = parsedResponse.matchSummary || '';
   
   return {
-    score: Math.min(Math.max(score, 50), 95),
-    subScores,
-    highlights,
-    listSummary,
-    detailedSummary,
-    keyRequirements,
-    analysis
+    score: matchScore,
+    subScores: {
+      experience: experienceScore,
+      industry: industryScore,
+      skills: skillsScore,
+      other: otherScore
+    },
+    highlights: [], // 列表视图不再需要 highlights
+    listSummary: matchSummary, // 使用 matchSummary 作为 listSummary
+    detailedSummary: '', // 列表视图不再需要 detailedSummary
+    keyRequirements: [], // 列表视图不再需要 keyRequirements
+    analysis: '' // 列表视图不再需要详细 analysis
   };
 }
 
@@ -364,4 +392,4 @@ export async function matchJobWithGPT(data: JobMatchRequest) {
     console.error('Error analyzing job match:', error);
     throw new Error('Failed to analyze job match');
   }
-} 
+}

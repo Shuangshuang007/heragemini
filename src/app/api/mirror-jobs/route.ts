@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import { fetchJobs } from '../../../services/jobFetchService';
-import { getLocationWeight } from '../../../utils/greaterAreaMap';
+import { analyzeJobWithGPT, needsJobAnalysis } from '../../../services/jobAnalysisService';
 
 // 内存防抖存储
 const debounceStore = new Map<string, { data: any; timestamp: number }>();
 const DEBOUNCE_EXPIRY = 60 * 1000; // 1分钟防抖
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: 'https://api.openai.com/v1',
-});
 
 // 防抖工具函数
 function getDebounceKey(jobTitle: string, city: string): string {
@@ -49,7 +43,7 @@ interface Job {
   id: string;
   title: string;
   company: string;
-  location: string;
+  location: string | string[];
   description: string;
   salary?: string;
   requirements?: string[];
@@ -70,87 +64,9 @@ interface Job {
   workMode?: string;
 }
 
-// GPT分析函数
-async function analyzeJobWithGPT(job: Job): Promise<Job> {
-  try {
-    // 如果已经有summary，跳过分析
-    if (job.summary && job.summary.length > 50) {
-      return job;
-    }
-
-    const prompt = `Analyze this job posting and provide:
-1. A concise summary (2-3 sentences)
-2. A detailed summary (4-5 sentences)
-3. A match score (0-100)
-4. Match analysis (2-3 sentences)
-5. A structured WORKMODE field (e.g., "2 Day Onsite", "Hybrid", "Fully Remote", etc.), based on both the raw WorkMode and the job description. If job description provides more detail, use that.
-
-Job Title: ${job.title}
-Company: ${job.company}
-Location: ${job.location}
-RawWorkMode: ${job.workMode || 'Not specified'}
-Description: ${job.description || 'No description provided'}
-
-Format your response as:
-SUMMARY:
-[concise summary]
-
-WORKMODE:
-[structured work mode, e.g., "2 Day Onsite", "Hybrid", "Fully Remote"]
-
-DETAILED_SUMMARY:
-[detailed summary]
-
-SCORE:
-[number 0-100]
-
-ANALYSIS:
-[match analysis]`;
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo-1106',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 500,
-      temperature: 0.7,
-    });
-
-    const response = completion.choices[0]?.message?.content || '';
-    
-    // 解析响应
-    const workModeMatch = response.match(/WORKMODE:\s*([^\n]+)/i);
-    const summaryMatch = response.match(/SUMMARY:\s*([\s\S]*?)(?=WORKMODE:|DETAILED_SUMMARY:|SCORE:|$)/);
-    const detailedSummaryMatch = response.match(/DETAILED_SUMMARY:\s*([\s\S]*?)(?=SCORE:|ANALYSIS:|$)/);
-    const scoreMatch = response.match(/SCORE:\s*(\d+)/);
-    const analysisMatch = response.match(/ANALYSIS:\s*([\s\S]*?)(?=SUMMARY:|WORKMODE:|DETAILED_SUMMARY:|SCORE:|$)/);
-
-    job.workMode = workModeMatch?.[1]?.trim() || job.workMode || '';
-    job.summary = summaryMatch?.[1]?.trim() || `${job.title} position at ${job.company} in ${job.location}.`;
-    job.detailedSummary = detailedSummaryMatch?.[1]?.trim() || job.description?.substring(0, 200) + '...' || '';
-    
-    // 计算基础Match Score
-    const baseScore = scoreMatch ? parseInt(scoreMatch[1]) : 75;
-    
-    // 应用位置权重（fringe区域乘以0.9）
-    // 从URL参数或请求中获取city信息
-    const city = (job as any).city || job.location?.split(',')[0]?.trim() || '';
-    const locationWeight = getLocationWeight(job.location, city);
-    job.matchScore = Math.round(baseScore * locationWeight);
-    
-    job.matchAnalysis = analysisMatch?.[1]?.trim() || 'Analysis completed.';
-
-    return job;
-  } catch (error) {
-    console.error(`[GPT] Error analyzing job ${job.title}:`, error);
-    // 提供基本的错误恢复，直接修改原对象
-    job.summary = `${job.title || 'Unknown'} position at ${job.company || 'Unknown'} in ${job.location || 'Unknown'}.`;
-    job.detailedSummary = job.description ? job.description.substring(0, 200) + '...' : '';
-    job.matchScore = 60; // 设置默认值为 60
-    job.matchAnalysis = 'Analysis unavailable due to processing error.';
-    return job; // 返回修改后的原对象
-  }
-}
-
 // POST方法：接收JobFetchService传入的数据并进行GPT分析
+// 注意：POST 方法保留 GPT 分析功能，用于后台批处理场景
+// 列表阶段的 GET 方法已改为按需模式（不进行批量 GPT 分析）
 export async function POST(request: Request) {
   try {
     const { jobs, jobTitle, city, limit, page, isHotJob, platform } = await request.json();
@@ -159,10 +75,16 @@ export async function POST(request: Request) {
     
     // 对职位进行GPT分析（保持所有原有功能）
     const analyzedJobs = await Promise.all(
-      jobs.map((job: any) => {
-        // 为每个job添加city信息
+      jobs.map(async (job: any) => {
         const jobWithCity = { ...job, city };
-        return analyzeJobWithGPT(jobWithCity);
+        if (!needsJobAnalysis(jobWithCity)) {
+          return jobWithCity;
+        }
+        const result = await analyzeJobWithGPT(jobWithCity, city);
+        return {
+          ...jobWithCity,
+          ...result,
+        };
       })
     );
     
@@ -219,27 +141,22 @@ export async function GET(request: Request) {
       platform
     });
     
-    console.log(`[MirrorJobs] GET: Starting GPT analysis for ${result.jobs.length} jobs`);
-    
-    // 对职位进行GPT分析，传递city信息
-    const analyzedJobs = await Promise.all(
-      result.jobs.map(job => {
-        // 为每个job添加city信息
-        const jobWithCity = { ...job, city };
-        return analyzeJobWithGPT(jobWithCity);
-      })
-    );
-    
-    console.log(`[MirrorJobs] GET: Final stats: ${analyzedJobs.length} jobs, Source: ${result.source}, IsHotJob: ${result.isHotJob}`);
+    // Step 3.2: 列表阶段不再进行批量 GPT 分析
+    // GPT 分析改为按需模式：只在用户点击 job detail 或打开 tailor resume 时调用
+    // 详情见 /api/jobs/[id] 和 JobDetailPanel/TailorPreview 组件
+    console.log(`[MirrorJobs] GET: Returning ${result.jobs.length} jobs without batch GPT analysis (on-demand mode)`);
     
     const responseData = {
-      jobs: analyzedJobs,
+      jobs: result.jobs, // 直接返回原始数据，不进行 GPT 分析
       total: result.total,
       page: result.page,
       totalPages: result.totalPages,
       source: result.source,
       isHotJob: result.isHotJob,
-      analysis: result.analysis
+      analysis: {
+        ...result.analysis,
+        note: 'GPT analysis is now on-demand (triggered when viewing job details)'
+      }
     };
     
     // 设置防抖数据（1分钟）

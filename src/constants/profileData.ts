@@ -18,6 +18,10 @@ export const COUNTRIES = [
   { value: 'sg', label: { en: 'Singapore', zh: '新加坡' } },
   { value: 'tw', label: { en: 'Taiwan', zh: '台湾' } },
   { value: 'us', label: { en: 'United States', zh: '美国' } },
+  { value: 'uk', label: { en: 'United Kingdom', zh: '英国' } },
+  { value: 'fr', label: { en: 'France', zh: '法国' } },
+  { value: 'ca', label: { en: 'Canada', zh: '加拿大' } },
+  { value: 'in', label: { en: 'India', zh: '印度' } },
 ] as const;
 
 export type CountryCode = (typeof COUNTRIES)[number]['value'];
@@ -128,6 +132,27 @@ export const CITIES: Record<CountryCode, Option[]> = {
     { value: 'fort_worth_tx', label: { en: 'Fort Worth, TX', zh: '沃斯堡, 得克萨斯州' } },
     { value: 'columbus_oh', label: { en: 'Columbus, OH', zh: '哥伦布, 俄亥俄州' } },
     { value: 'san_francisco_ca', label: { en: 'San Francisco, CA', zh: '旧金山, 加利福尼亚州' } },
+  ],
+  uk: [
+    { value: 'london', label: { en: 'London', zh: '伦敦' } },
+    { value: 'manchester', label: { en: 'Manchester', zh: '曼彻斯特' } },
+    { value: 'birmingham', label: { en: 'Birmingham', zh: '伯明翰' } },
+    { value: 'edinburgh', label: { en: 'Edinburgh', zh: '爱丁堡' } },
+  ],
+  fr: [
+    { value: 'paris', label: { en: 'Paris', zh: '巴黎' } },
+  ],
+  ca: [
+    { value: 'toronto_on', label: { en: 'Toronto, ON', zh: '多伦多, 安大略省' } },
+    { value: 'vancouver_bc', label: { en: 'Vancouver, BC', zh: '温哥华, 不列颠哥伦比亚省' } },
+    { value: 'montreal_qc', label: { en: 'Montreal, QC', zh: '蒙特利尔, 魁北克省' } },
+    { value: 'calgary_ab', label: { en: 'Calgary, AB', zh: '卡尔加里, 艾伯塔省' } },
+  ],
+  in: [
+    { value: 'mumbai_mh', label: { en: 'Mumbai, MH', zh: '孟买, 马哈拉施特拉邦' } },
+    { value: 'delhi_dl', label: { en: 'Delhi, DL', zh: '德里, 德里' } },
+    { value: 'bangalore_ka', label: { en: 'Bangalore, KA', zh: '班加罗尔, 卡纳塔克邦' } },
+    { value: 'hyderabad_tg', label: { en: 'Hyderabad, TG', zh: '海得拉巴, 特伦甘纳邦' } },
   ],
 };
 
@@ -544,6 +569,36 @@ export const JOB_TITLES: JobTitleGroup[] = [
         value: "store_manager",
         label: { en: "Store Manager", zh: "店铺经理" },
         category: { en: "Retail & Hospitality", zh: "零售与酒店" }
+      }
+    ]
+  },
+  {
+    label: { en: "Casual & Seasonal Work", zh: "临时与季节性工作" },
+    options: [
+      {
+        value: "casual_job",
+        label: { en: "Casual Job / Casual Work", zh: "临时工作" },
+        category: { en: "Casual & Temporary Work", zh: "临时工作" }
+      },
+      {
+        value: "christmas_casual",
+        label: { en: "Christmas Casual", zh: "圣诞临时工" },
+        category: { en: "Casual & Temporary Work", zh: "临时工作" }
+      },
+      {
+        value: "casual_retail",
+        label: { en: "Casual Retail", zh: "临时零售" },
+        category: { en: "Casual & Temporary Work", zh: "临时工作" }
+      },
+      {
+        value: "casual_event_staff",
+        label: { en: "Casual Event Staff", zh: "临时活动工作人员" },
+        category: { en: "Casual & Temporary Work", zh: "临时工作" }
+      },
+      {
+        value: "casual_chef",
+        label: { en: "Casual Chef", zh: "临时厨师" },
+        category: { en: "Casual & Temporary Work", zh: "临时工作" }
       }
     ]
   },

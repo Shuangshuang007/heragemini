@@ -6,3 +6,7 @@ nohup.out
 .next
 .env.local
 .env.production
+.DS_Store
+tsconfig.tsbuildinfo
+*.pdf
+*.backup.*

@@ -3,9 +3,60 @@
  * 定义热门职位和城市组合，这些组合将优先从MongoDB获取数据
  */
 
+import { cityOptionsMap } from './cities';
+
+// 从 Profile 下拉菜单中提取所有城市（cityOptionsMap）
+let cachedProfileCities: string[] | null = null;
+
+/**
+ * 从 Profile 下拉菜单（cityOptionsMap）中提取所有城市
+ * @returns 所有城市的 value 数组
+ */
+function getAllProfileCities(): string[] {
+  if (cachedProfileCities !== null) {
+    return cachedProfileCities;
+  }
+
+  const cities: string[] = [];
+  
+  // 从 cityOptionsMap 中提取所有城市的 value
+  Object.values(cityOptionsMap).forEach(countryCities => {
+    countryCities.forEach(city => {
+      if (city.value && !cities.includes(city.value)) {
+        cities.push(city.value);
+      }
+    });
+  });
+
+  cachedProfileCities = cities;
+  return cities;
+}
+
+/**
+ * 规范化城市名称用于匹配
+ * 处理各种格式：Sydney, Sydney NSW, sydney_nsw, New York, New York, NY 等
+ */
+function normalizeCityForMatch(city: string): string {
+  if (!city) return '';
+  
+  // 转换为小写
+  let normalized = city.toLowerCase().trim();
+  
+  // 移除州/省/国家后缀（如 ", NSW", ", NY", ", VIC" 等）
+  normalized = normalized.replace(/,\s*[a-z]{2,3}$/i, '');
+  
+  // 移除下划线格式（如 sydney_nsw -> sydney）
+  normalized = normalized.replace(/_/g, ' ');
+  
+  // 移除多余空格
+  normalized = normalized.replace(/\s+/g, ' ').trim();
+  
+  return normalized;
+}
+
 // Hot Jobs 配置
 export const HOT_JOBS_CONFIG = {
-  // 支持的城市
+  // 支持的城市（已废弃，现在从 cityOptionsMap 动态提取）
   supportedCities: ['sydney', 'melbourne'],
   
   // 精确匹配的热门职位
@@ -334,8 +385,13 @@ export async function getHotJobsQuery(profile: UserProfile) {
   const city = profile.city;
 
   // 4. 构建扩展搜索组合
-  const locationList = greaterAreaMap[city] 
-    ? [...greaterAreaMap[city].core, ...greaterAreaMap[city].fringe]
+  // 从城市名称中提取基础城市名（去除州/省缩写）
+  // 例如: "New York, NY" -> "New York", "Sydney, NSW" -> "Sydney"
+  const baseCityName = city.match(/^(.+?),\s*[A-Z]{2,3}$/)?.[1]?.trim() || city.trim();
+  const greaterArea = greaterAreaMap[baseCityName] || greaterAreaMap[city];
+  
+  const locationList = greaterArea 
+    ? [...greaterArea.core, ...greaterArea.fringe]
     : [city];
   
   // 构建搜索组合：每个职位标题 × 每个位置
@@ -393,15 +449,36 @@ export async function getHotJobsQuery(profile: UserProfile) {
  * @returns 是否为Hot Job
  */
 export function isHotJob(jobTitle: string, city: string): boolean {
-  // 宽松城市判断：只要city字符串包含sydney或melbourne都算hot city
-  const cityStr = city.toLowerCase();
-  const isHotCity = /sydney/.test(cityStr) || /melbourne/.test(cityStr);
-
-  if (!isHotCity) {
+  if (!jobTitle || !city) {
     return false;
   }
+
+  // 1. 从 Profile 下拉菜单中提取所有城市
+  const profileCities = getAllProfileCities();
   
-  // 检查精确匹配
+  // 2. 规范化输入的城市名称
+  const normalizedInputCity = normalizeCityForMatch(city);
+  
+  // 3. 检查城市是否在 Profile 城市列表中（宽松匹配）
+  const isHotCity = profileCities.some(profileCity => {
+    const normalizedProfileCity = normalizeCityForMatch(profileCity);
+    
+    // 精确匹配或包含匹配
+    return normalizedInputCity === normalizedProfileCity ||
+           normalizedInputCity.includes(normalizedProfileCity) ||
+           normalizedProfileCity.includes(normalizedInputCity);
+  });
+
+  if (!isHotCity) {
+    // 如果不在 Profile 城市列表中，使用原有逻辑作为 fallback
+    const cityStr = city.toLowerCase();
+    const isLegacyHotCity = /sydney/.test(cityStr) || /melbourne/.test(cityStr);
+    if (!isLegacyHotCity) {
+    return false;
+    }
+  }
+  
+  // 4. 检查职位匹配（保留原有逻辑）
   const normalizedJobTitle = jobTitle.toLowerCase();
   const exactMatch = HOT_JOBS_CONFIG.exactMatches.some(
     hotJob => hotJob.toLowerCase() === normalizedJobTitle
@@ -420,5 +497,6 @@ export function isHotJob(jobTitle: string, city: string): boolean {
       return true;
     }
   }
+  
   return false;
 } 

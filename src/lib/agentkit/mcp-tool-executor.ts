@@ -5,6 +5,16 @@
 import { connectToMongoDB, transformMongoDBJobToFrontendFormat } from '../../services/jobDatabaseService';
 import { getUserProfile } from '../../services/profileDatabaseService';
 
+const buildLocationConditions = (city?: string) => {
+  if (!city) return null;
+  // 优化：只使用 locations 字段查询（有索引，查询快）
+  // 返回时通过 transformMongoDBJobToFrontendFormat 的 normalizeLocation 函数保持 location 字段给前端
+  const regex = { $regex: city, $options: 'i' };
+  return {
+    locations: regex
+  };
+};
+
 /**
  * Execute MCP tools from AgentKit context
  */
@@ -75,7 +85,7 @@ export class MCPToolExecutor {
 
       // 从数据库获取职位
       const { db } = await connectToMongoDB();
-      const collection = db.collection('hera_jobs.jobs');
+      const collection = db.collection('jobs');
       
       const query: any = { is_active: { $ne: false } };
       
@@ -87,10 +97,18 @@ export class MCPToolExecutor {
           ];
         }
         if (searchCriteria.city) {
-          query.location = { $regex: searchCriteria.city, $options: 'i' };
+          const locationFilter = buildLocationConditions(searchCriteria.city);
+          if (locationFilter) {
+            query.$and = query.$and || [];
+            query.$and.push(locationFilter);
+          }
         }
       } else if (searchCriteria.city) {
-        query.location = { $regex: searchCriteria.city, $options: 'i' };
+        const locationFilter = buildLocationConditions(searchCriteria.city);
+        if (locationFilter) {
+          query.$and = query.$and || [];
+          query.$and.push(locationFilter);
+        }
       }
       
       const searchLimit = Math.max(limit * 3, 30);
@@ -185,7 +203,7 @@ export class MCPToolExecutor {
       console.log('[MCPToolExecutor] Executing search_jobs with args:', { job_title, city, limit });
 
       const { db } = await connectToMongoDB();
-      const collection = db.collection('hera_jobs.jobs');
+      const collection = db.collection('jobs');
       
       const query: any = { 
         is_active: { $ne: false },
@@ -193,8 +211,13 @@ export class MCPToolExecutor {
           { title: { $regex: job_title, $options: 'i' } },
           { summary: { $regex: job_title, $options: 'i' } }
         ],
-        location: { $regex: city, $options: 'i' }
+        // location filter applied below
       };
+      const locationFilter = buildLocationConditions(city);
+      if (locationFilter) {
+        query.$and = query.$and || [];
+        query.$and.push(locationFilter);
+      }
 
       const jobs = await collection
         .find(query)

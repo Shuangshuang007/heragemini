@@ -18,6 +18,8 @@ export function diffWithProfile(job: Job, profile: PersonalInfo) {
     // 获取所有 requirements 并标记为缺失
     const allRequirements = [
       ...(job.keyRequirements || []),
+      ...(job.skillsMustHave || []),
+      ...(job.skillsNiceToHave || []),
       ...(job.requirements || []),
       ...(job.skills || [])
     ];
@@ -32,12 +34,20 @@ export function diffWithProfile(job: Job, profile: PersonalInfo) {
     jobRequirements.push(...job.keyRequirements);
   }
   
-  // 2. 如果没有 keyRequirements，使用 requirements
+  // 2. 其次使用结构化 skills
+  if (job.skillsMustHave && job.skillsMustHave.length > 0) {
+    jobRequirements.push(...job.skillsMustHave);
+  }
+  if (job.skillsNiceToHave && job.skillsNiceToHave.length > 0) {
+    jobRequirements.push(...job.skillsNiceToHave);
+  }
+  
+  // 3. 如果仍为空，使用 legacy requirements
   if (jobRequirements.length === 0 && job.requirements && job.requirements.length > 0) {
     jobRequirements.push(...job.requirements);
   }
   
-  // 3. 最后使用 skills
+  // 4. 最后使用 legacy skills
   if (jobRequirements.length === 0 && job.skills && job.skills.length > 0) {
     jobRequirements.push(...job.skills);
   }
@@ -182,12 +192,20 @@ export function getJobRequirements(job: Job): string[] {
     requirements.push(...job.keyRequirements);
   }
   
-  // 2. 如果没有 keyRequirements，使用 requirements
+  // 2. 然后使用结构化技能
+  if (job.skillsMustHave && job.skillsMustHave.length > 0) {
+    requirements.push(...job.skillsMustHave);
+  }
+  if (job.skillsNiceToHave && job.skillsNiceToHave.length > 0) {
+    requirements.push(...job.skillsNiceToHave);
+  }
+  
+  // 3. 如果没有结构化字段，使用 legacy requirements
   if (requirements.length === 0 && job.requirements && job.requirements.length > 0) {
     requirements.push(...job.requirements);
   }
   
-  // 3. 最后使用 skills
+  // 4. 最后使用 legacy skills
   if (requirements.length === 0 && job.skills && job.skills.length > 0) {
     requirements.push(...job.skills);
   }

@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const platform = searchParams.get('platform') || '';
   const limit = searchParams.get('limit') || '600';
   
-  console.log(`[JobFetchRouter] Received request: jobTitle=${jobTitle}, city=${city}, platform=${platform}`);
+  console.log(`[JobFetchRouter] Received GET request: jobTitle=${jobTitle}, city=${city}, platform=${platform}`);
   
   try {
     // 如果没有指定平台，查询所有平台
@@ -33,6 +33,33 @@ export async function GET(request: NextRequest) {
     console.error('[JobFetchRouter] Error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch jobs', details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { action, data } = body;
+    
+    console.log(`[JobFetchRouter] Received POST request: action=${action}`);
+    
+    if (action === 'saveSearchRecord') {
+      // 保存搜索记录的逻辑可以在这里实现
+      // 目前只是确认收到请求
+      console.log('[JobFetchRouter] Search record received:', data);
+      return NextResponse.json({ success: true, message: 'Search record saved' });
+    }
+    
+    return NextResponse.json(
+      { error: `Unknown action: ${action}` },
+      { status: 400 }
+    );
+  } catch (error: any) {
+    console.error('[JobFetchRouter] POST Error:', error);
+    return NextResponse.json(
+      { error: 'Failed to process request', details: error.message },
       { status: 500 }
     );
   }

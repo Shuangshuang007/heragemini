@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchJobs } from '../../../services/jobFetchService';
 import { getUserProfile, upsertJobApplication } from '../../../services/profileDatabaseService';
-import { connectToMongoDB, transformMongoDBJobToFrontendFormat } from '../../../services/jobDatabaseService';
+import { connectToMongoDB, queryJobsByIds, queryJobsWithFilters, transformMongoDBJobToFrontendFormat } from '../../../services/jobDatabaseService';
 import { parseMessageWithGPT } from '../../../gpt-services/assistant/parseMessage';
 import { tailorResumeWithGPT } from '../../../gpt-services/resume/tailorResume';
 import { AgentKitPlanner } from '../../../lib/agentkit/planner';
@@ -89,6 +89,7 @@ function fixArgs(args: any) {
 
 // MCP Mode: fast (lightweight) | full (deep analysis with GPT)
 const HERA_MCP_MODE = process.env.HERA_MCP_MODE || "fast";
+const FAST_QUERY_TIMEOUT_MS = Number(process.env.MCP_FAST_TIMEOUT_MS || 15000); // 15 秒超时限制
 
 // Stage time budgets (milliseconds) - for FULL mode
 const TOTAL_BUDGET_MS = 35000;   // Total max 35s
@@ -132,9 +133,12 @@ function toIsoSafe(v: any, ...alts: any[]): string {
 // GPT建议：安全映射job，消灭非法值
 function mapJobSafe(j: any) {
   const id = j._id || j.id || j.jobIdentifier || crypto.randomUUID();
+  const jobUrl = (j.jobUrl && typeof j.jobUrl === "string" && j.jobUrl.startsWith("http"))
+    ? j.jobUrl
+    : undefined;
   const url =
+    jobUrl ||
     j.url ||
-    j.jobUrl ||
     `https://www.heraai.net.au/jobs/${encodeURIComponent(String(id))}?utm=chatgpt-mcp`;
 
   return {
@@ -145,6 +149,7 @@ function mapJobSafe(j: any) {
     employmentType: String(j.employmentType || j.employment_type || ""),
     postDate: toIsoSafe(j.postedDateISO, j.postedDate, j.createdAt, j.updatedAt),
     url,
+    jobUrl, // 添加 jobUrl 字段
     platform: String(j.platform || j.source || j.source_label || "")
   };
 }
@@ -194,175 +199,118 @@ function normalizeExperienceTag(text: string): string | null {
   return null;
 }
 
-// 生成job highlights（结合数据库字段和OpenAI）
-async function generateJobHighlights(job: any): Promise<string[]> {
-  const highlights: string[] = [];
-  
-  // ============================================
-  // 第1条：公司 + 明确年份 + Work Mode + 上班要求
-  // ============================================
-  const company = job.company || job.organisation || 'Company';
-  
-  // 提取经验年份（从数据库字段）
-  let experienceText = '';
-  if (job.experience) {
-    // 尝试提取具体年份
-    const yearMatch = job.experience.match(/(\d{1,2})\s*[\+\-–]?\s*(\d{1,2})?\s*(years?|yrs?|y)/i);
-    if (yearMatch) {
-      if (yearMatch[2]) {
-        experienceText = `${yearMatch[1]}-${yearMatch[2]} years`;
-      } else {
-        experienceText = `${yearMatch[1]}+ years`;
-      }
-    } else {
-      experienceText = job.experience;
-    }
-  } else {
-    // 从 tags 中提取经验
-    const experienceTag = (job.tags || []).find((tag: string) => 
-      /\d+\s*(y|years|yrs)|experience|senior|junior|mid/i.test(tag)
-    );
-    if (experienceTag) {
-      const normalized = normalizeExperienceTag(experienceTag);
-      if (normalized) {
-        experienceText = normalized;
-      }
-    }
+function extractHighlights(job: any): string[] {
+  if (Array.isArray(job.highlights) && job.highlights.length > 0) {
+    return job.highlights.slice(0, 3);
   }
-  if (!experienceText) {
-    experienceText = 'experienced professional';
-  }
-  
-  // 提取工作模式（从数据库字段）
-  const workMode = parseWorkMode(job.workMode || '', job.description || '');
-  
-  // 组合第1条
-  if (workMode) {
-    highlights.push(`${company} seeking ${experienceText}; ${workMode}`);
-  } else {
-    highlights.push(`${company} seeking ${experienceText}`);
-  }
-  
-  // ============================================
-  // 第2条：技能 + Degree + 身份要求
-  // ============================================
-  const requirementsParts: string[] = [];
-  
-  // 2.1 技能要求（使用OpenAI提取或fallback到数据库）
-  let skillsText = '';
-  try {
-    const { OpenAI } = await import('openai');
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      baseURL: 'https://api.openai.com/v1',
-    });
 
-    const prompt = `Extract ONLY the top 3-4 technical skills/tools from this job posting.
+  if (Array.isArray(job.keyRequirements) && job.keyRequirements.length > 0) {
+    return job.keyRequirements.slice(0, 3);
+  }
 
-Job: ${job.title || ''}
-Description: ${(job.description || job.summary || '').substring(0, 800)}
-${job.skills && job.skills.length > 0 ? `\nSkills: ${job.skills.slice(0, 8).join(', ')}` : ''}
+  if (Array.isArray(job.skillsMustHave) && job.skillsMustHave.length > 0) {
+    return job.skillsMustHave.slice(0, 3);
+  }
 
-Return ONLY a comma-separated list of 3-4 technical skills (no "Requires:", no explanations).
-Example: Python, AWS, Docker, Kubernetes`;
+  if (Array.isArray(job.skills) && job.skills.length > 0) {
+    return job.skills.slice(0, 3);
+  }
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo-1106',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 60,
-      temperature: 0.2,
-    });
+  if (typeof job.summary === 'string' && job.summary.trim()) {
+    return [job.summary.trim()];
+  }
 
-    const response = completion.choices[0]?.message?.content?.trim() || '';
-    if (response && !response.toLowerCase().includes('requires')) {
-      skillsText = response;
-    }
-  } catch (error) {
-    console.error('[MCP] OpenAI error:', error);
+  if (typeof job.description === 'string' && job.description.trim()) {
+    return [job.description.trim().split('\n').filter(Boolean)[0] || job.description.trim()];
   }
-  
-  // Fallback: 使用数据库skills
-  if (!skillsText && job.skills && job.skills.length > 0) {
-    skillsText = job.skills.slice(0, 4).join(', ');
-  }
-  
-  if (skillsText) {
-    requirementsParts.push(skillsText);
-  }
-  
-  // 2.2 学位要求（从tags或description提取）
-  let degreeText = '';
-  const degreeTag = (job.tags || []).find((tag: string) => 
-    /bachelor|master|phd|doctorate|degree/i.test(tag)
-  );
-  if (degreeTag) {
-    degreeText = degreeTag;
-  } else {
-    const jdLower = (job.description || job.summary || '').toLowerCase();
-    if (/bachelor'?s?\s+degree/i.test(jdLower)) {
-      degreeText = "Bachelor's";
-    } else if (/master'?s?\s+degree/i.test(jdLower)) {
-      degreeText = "Master's";
-    } else if (/phd|doctorate/i.test(jdLower)) {
-      degreeText = "PhD";
-    }
-  }
-  if (degreeText) {
-    requirementsParts.push(degreeText);
-  }
-  
-  // 2.3 身份要求（从description提取）
-  const jdText = (job.description || job.summary || '').toLowerCase();
-  let citizenshipText = '';
-  if (/australian citizenship|citizenship required|pr required|permanent resident/i.test(jdText)) {
-    citizenshipText = 'Australian PR/Citizenship required';
-  } else if (/visa sponsorship|sponsorship available|will sponsor/i.test(jdText)) {
-    citizenshipText = 'Visa sponsorship available';
-  }
-  if (citizenshipText) {
-    requirementsParts.push(citizenshipText);
-  }
-  
-  // 组合第2条
-  if (requirementsParts.length > 0) {
-    highlights.push(`Requires: ${requirementsParts.join('; ')}`);
-  } else {
-    highlights.push('View details for full requirements');
-  }
-  
-  return highlights;
+
+  return [];
 }
 
-// 带Highlights和View Details链接的卡片（ChatGPT支持Markdown链接）
+// 带Highlights和View Details链接的卡片（ChatGPT支持Markdown链接，参考 recommend_jobs 的格式）
 function buildMarkdownCards(q: { title: string; city: string }, jobs: any[], total: number) {
   const cards = jobs.slice(0, 5).map((j: any, idx: number) => {
     const title = (j.title || "").replace(/[–—]/g, "-").trim();
     const company = (j.company || "").trim();
     const loc = (j.location || "").trim();
-    const url = j.url || "";
+    // 优先使用 jobUrl，否则使用 url
+    const url = j.jobUrl || j.url || "";
+    const matchScore = typeof j.matchScore === 'number' ? `${j.matchScore}%` : null;
+    const subScores = j.subScores || {};
 
-    // Highlights显示（如果有）
-    const highlightLines = (j.highlights || []).map((h: string) => {
-      return `   📌 ${h}`;
-    }).join('\n');
-
-    // View Details链接
-    const viewDetailsLink = url ? `\n   [View Details](${url})` : "";
-
-    // 组合：标题、公司、地点、highlights、View Details
     const parts = [
       `${idx + 1}. ${title}`,
       `   ${company}`,
       `   ${loc}`
     ];
-    
-    if (highlightLines) {
-      parts.push(''); // 空行
-      parts.push(highlightLines);
+
+    if (matchScore) {
+      const subScoreText = [
+        subScores.experience ? `Experience: ${subScores.experience}%` : null,
+        subScores.skills ? `Skills: ${subScores.skills}%` : null,
+        subScores.industry ? `Industry: ${subScores.industry}%` : null,
+        subScores.other ? `Other: ${subScores.other}%` : null,
+      ].filter(Boolean).join(' | ');
+      parts.push('');
+      parts.push(`   **Match Score:** ${matchScore}${subScoreText ? ` (${subScoreText})` : ''}`);
     }
-    
-    if (viewDetailsLink) {
-      parts.push(viewDetailsLink);
+
+    // Highlights显示（如果有）
+    const highlights = Array.isArray(j.highlights) ? j.highlights : [];
+    if (highlights.length > 0) {
+      parts.push(''); // 空行
+      parts.push('   **Job Highlights:**');
+      highlights.slice(0, 3).forEach((h: string) => {
+        parts.push(`   • ${h}`);
+      });
+    }
+
+    // Must-Have Skills (如果有)
+    if (j.skillsMustHave && Array.isArray(j.skillsMustHave) && j.skillsMustHave.length > 0) {
+      parts.push(''); // 空行
+      parts.push('   **Must-Have Skills:**');
+      j.skillsMustHave.slice(0, 5).forEach((skill: string) => {
+        parts.push(`   • ${skill}`);
+      });
+    }
+
+    // Nice-to-Have Skills (如果有)
+    if (j.skillsNiceToHave && Array.isArray(j.skillsNiceToHave) && j.skillsNiceToHave.length > 0) {
+      parts.push(''); // 空行
+      parts.push('   **Nice-to-Have Skills:**');
+      j.skillsNiceToHave.slice(0, 5).forEach((skill: string) => {
+        parts.push(`   • ${skill}`);
+      });
+    }
+
+    // Work Rights (如果有)
+    if (j.workRights) {
+      const workRightsParts = [];
+      if (j.workRights.requiresStatus) {
+        workRightsParts.push(`Requires: ${j.workRights.requiresStatus}`);
+      }
+      if (j.workRights.sponsorship && j.workRights.sponsorship !== 'unknown') {
+        workRightsParts.push(`Sponsorship: ${j.workRights.sponsorship}`);
+      }
+      if (workRightsParts.length > 0) {
+        parts.push(''); // 空行
+        parts.push('   **Work Rights:**');
+        workRightsParts.forEach((wr: string) => {
+          parts.push(`   • ${wr}`);
+        });
+      }
+    }
+
+    // 若存在 jobUrl，增加一行说明
+    if (j.jobUrl && j.jobUrl !== url) {
+      parts.push('');
+      parts.push(`   **Job URL:** ${j.jobUrl}`);
+    }
+
+    // View Details链接
+    if (url) {
+      parts.push(''); // 空行
+      parts.push(`   [View Details](${url})`);
     }
 
     return parts.join('\n');
@@ -456,123 +404,24 @@ async function fastDbQuery(params: FastQueryParams): Promise<{
   } = params;
 
   try {
-    const { db } = await connectToMongoDB();
-    const collection = db.collection('hera_jobs.jobs');
+    const result = await queryJobsWithFilters({
+      jobTitle: title,
+      city,
+      company,
+      postedWithinDays,
+      platforms,
+      page,
+      pageSize,
+    });
 
-    // Build query filter
-    const filter: any = {
-      is_active: { $ne: false }
-    };
-
-    // Optional: Filter by title (only if provided)
-    if (title) {
-      filter.title = { $regex: title, $options: 'i' };
-    }
-
-    // Optional: Filter by city (only if provided)
-    if (city) {
-      filter.location = { $regex: city, $options: 'i' };
-    }
-
-    // Optional: Filter by company
-    if (company) {
-      filter.$and = filter.$and || [];
-      filter.$and.push({
-        $or: [
-          { company: { $regex: company, $options: 'i' } },
-          { company_name: { $regex: company, $options: 'i' } }
-        ]
-      });
-    }
-
-    // Optional: Filter by posted date
-    if (postedWithinDays && postedWithinDays > 0) {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - postedWithinDays);
-      filter.$or = [
-        { postedDateISO: { $gte: cutoffDate.toISOString() } },
-        { createdAt: { $gte: cutoffDate } },
-      ];
-    }
-
-    // Optional: Filter by platforms
-    if (platforms && platforms.length > 0) {
-      const platformRegex = platforms.map(p => new RegExp(p, 'i'));
-      filter.$and = filter.$and || [];
-      filter.$and.push({
-        $or: [
-          { source: { $in: platformRegex } },
-          { sourceType: { $in: platformRegex } },
-          { platform: { $in: platformRegex } },
-        ]
-      });
-    }
-
-    // Sorting: Use postedDateISO, fallback to createdAt
-    const sort: any = {
-      postedDateISO: -1,
-      createdAt: -1,
-      updatedAt: -1
-    };
-
-    // Projection: Include fields needed for highlights generation
-    const projection = {
-      id: 1,
-      _id: 1,
-      jobIdentifier: 1,
-      title: 1,
-      company: 1,
-      organisation: 1,
-      location: 1,
-      employmentType: 1,
-      jobUrl: 1,
-      url: 1,
-      postedDateISO: 1,
-      postedDate: 1,
-      postedDateRaw: 1,
-      createdAt: 1,
-      updatedAt: 1,
-      source: 1,
-      sourceType: 1,
-      platform: 1,
-      // ✅ Additional fields for highlights generation
-      description: 1,
-      summary: 1,
-      requirements: 1,
-      skills: 1,
-      experience: 1,
-      benefits: 1,
-      workMode: 1,
-    };
-
-    // Pagination
-    const skip = (page - 1) * pageSize;
-    const limit = Math.min(pageSize, 50); // Max 50 per page
-
-    // Execute query
-    const [jobs, totalCount] = await Promise.all([
-      collection
-        .find(filter)
-        .project(projection)
-        .sort(sort)
-        .skip(skip)
-        .limit(limit + 1) // Fetch one extra to check if there's more
-        .toArray(),
-      collection.countDocuments(filter),
-    ]);
-
-    // Check if there are more results
-    const hasMore = jobs.length > limit;
-    const resultJobs = hasMore ? jobs.slice(0, limit) : jobs;
-
-    console.log(`[MCP FAST] Found ${resultJobs.length}/${totalCount} jobs for "${title}" in "${city}"`);
+    console.log(`[MCP FAST] Found ${result.jobs.length}/${result.total} jobs for "${title}" in "${city}"`);
 
     return {
-      jobs: resultJobs,
-      total: totalCount,
-      page,
-      pageSize: limit,
-      hasMore,
+      jobs: result.jobs,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      hasMore: result.hasMore,
     };
   } catch (error) {
     console.error('[MCP FAST] Database query error:', error);
@@ -2243,20 +2092,23 @@ export async function POST(request: NextRequest) {
             console.info("[TRACE]", traceId, "FAST mode:", logParams);
 
     let result;
+            const queryParams: FastQueryParams = {
+              title: jobTitle, 
+              city, 
+              page, 
+              pageSize,
+              postedWithinDays,
+              platforms
+            };
+
             try {
               result = await withTimeout(
-                fastDbQuery({ 
-                  title: jobTitle, 
-                  city, 
-                  page, 
-                  pageSize,
-                  postedWithinDays,
-                  platforms
-                }),
-                Math.min(8000, budgetLeft(t0))
+                fastDbQuery(queryParams),
+                Math.min(FAST_QUERY_TIMEOUT_MS, budgetLeft(t0))
               );
             } catch (e: any) {
-              console.warn("[TRACE]", traceId, "FAST query timeout:", e.message);
+              console.warn("[TRACE]", traceId, "FAST query timeout, returning empty result:", e.message);
+              // 超时直接返回空数组，不使用 fallback
               result = { jobs: [], total: 0, page, pageSize, hasMore: false };
             }
 
@@ -2273,9 +2125,12 @@ export async function POST(request: NextRequest) {
 
               // Generate URL: priority jobUrl > url > internal fallback
               const jobId = String(j.id || j._id || j.jobIdentifier || "");
+              const jobUrl = (j.jobUrl && typeof j.jobUrl === "string" && j.jobUrl.startsWith("http"))
+                ? j.jobUrl
+                : undefined;
               const url =
-                (j.jobUrl && typeof j.jobUrl === "string" && j.jobUrl.startsWith("http"))
-                  ? j.jobUrl
+                jobUrl
+                  ? jobUrl
                   : (j.url && typeof j.url === "string" && j.url.startsWith("http"))
                     ? j.url
                     : `https://www.heraai.net.au/jobs/${encodeURIComponent(jobId)}?utm_source=chatgpt&utm_medium=mcp&utm_campaign=fast`;
@@ -2288,45 +2143,30 @@ export async function POST(request: NextRequest) {
                 employmentType: j.employmentType || "",
                 postDate: posted ? (posted instanceof Date ? posted.toISOString() : new Date(posted).toISOString()) : null,
                 url,
+                jobUrl, // 添加 jobUrl 字段
                 platform: j.sourceType || (Array.isArray(j.source) ? j.source[0] : j.source) || j.platform || "",
               };
             });
 
             const elapsed = Date.now() - t0;
-            const note = elapsed >= 8000 ? "timeout" : "completed";
+            const note = elapsed >= 15000 ? "timeout" : "completed";
 
-            // GPT建议：第一次只回5条，控制体积 + 保证 < 8s
-            const HARD_DEADLINE_MS = 8000;
+            // GPT建议：第一次只回5条，控制体积 + 保证 < 15s
+            const HARD_DEADLINE_MS = 15000;
             const limit = 5;
             const src: any[] = Array.isArray(result?.jobs) ? result.jobs : (Array.isArray(result) ? result : []);
             
-            // 并发生成highlights（使用原始job数据，包含description等字段）
-            const jobsWithHighlights = await Promise.all(
-              src.slice(0, limit).map(async (job: any) => {
-                try {
-                  const highlights = await withTimeout(
-                    generateJobHighlights(job),
-                    3000 // 每个job最多3秒
-                  );
-                  return { ...job, highlights };
-                } catch (error) {
-                  console.error('[MCP] Highlights timeout for job:', job.id || job._id);
-                  // Fallback: 使用数据库字段
-                  const fallbackHighlights = [
-                    `${job.company || 'Company'} seeking ${job.experience || 'candidate'}`,
-                    job.skills && job.skills.length > 0 
-                      ? `Requires: ${job.skills.slice(0, 5).join(', ')}`
-                      : 'View details for requirements'
-                  ];
-                  return { ...job, highlights: fallbackHighlights };
-                }
-              })
-            );
-            
-            // 映射为安全格式（保留highlights）
-            const safeJobs = jobsWithHighlights.map((j: any) => ({
-              ...mapJobSafe(j),
-              highlights: j.highlights || []
+            const previewJobs = src.slice(0, limit);
+            // 使用完整的 job 数据（已包含所有字段，包括 skillsMustHave, skillsNiceToHave, workRights, jobUrl）
+            const safeJobs = previewJobs.map((job: any) => ({
+              ...mapJobSafe(job),
+              highlights: extractHighlights(job),
+              // 保留完整的字段（如果 job 已经有这些字段）
+              skillsMustHave: job.skillsMustHave || [],
+              skillsNiceToHave: job.skillsNiceToHave || [],
+              workRights: job.workRights,
+              jobUrl: job.jobUrl,
+              url: job.jobUrl || job.url || mapJobSafe(job).url, // 确保 url 优先使用 jobUrl
             }));
             
             // 生成Markdown卡片预览（iOS ChatGPT需要，现在包含highlights）
@@ -2500,33 +2340,17 @@ export async function POST(request: NextRequest) {
           try {
             const result = await fastDbQuery(queryParams);
             
-            // Generate highlights for jobs (reuse existing logic)
-            const jobsWithHighlights = await Promise.all(
-              result.jobs.slice(0, pageSize).map(async (job: any) => {
-                try {
-                  const highlights = await withTimeout(
-                    generateJobHighlights(job),
-                    3000 // Each job gets 3 seconds for highlights
-                  );
-                  return { ...job, highlights };
-                } catch (error) {
-                  console.error('[MCP] Highlights timeout for job:', job.id || job._id);
-                  // Fallback logic
-                  const fallbackHighlights = [
-                    `${job.company || job.company_name || 'Company'} seeking ${job.experience || 'candidate'}`,
-                    job.skills && job.skills.length > 0 
-                      ? `Requires: ${job.skills.slice(0, 5).join(', ')}`
-                      : 'View details for requirements'
-                  ];
-                  return { ...job, highlights: fallbackHighlights };
-                }
-              })
-            );
-            
-            // Map to safe format (preserve highlights)
-            const safeJobs = jobsWithHighlights.map((j: any) => ({
-              ...mapJobSafe(j),
-              highlights: j.highlights || []
+            const previewJobs = result.jobs.slice(0, pageSize);
+            // 使用完整的 job 数据（已包含所有字段，包括 skillsMustHave, skillsNiceToHave, workRights, jobUrl）
+            const safeJobs = previewJobs.map((job: any) => ({
+              ...mapJobSafe(job),
+              highlights: extractHighlights(job),
+              // 保留完整的字段（如果 job 已经有这些字段）
+              skillsMustHave: job.skillsMustHave || [],
+              skillsNiceToHave: job.skillsNiceToHave || [],
+              workRights: job.workRights,
+              jobUrl: job.jobUrl,
+              url: job.jobUrl || job.url || mapJobSafe(job).url, // 确保 url 优先使用 jobUrl
             }));
             
             // Generate Markdown cards preview with company info
@@ -2631,33 +2455,17 @@ export async function POST(request: NextRequest) {
           try {
             const result = await fastDbQuery(queryParams);
             
-            // Generate highlights for jobs (reuse existing logic)
-            const jobsWithHighlights = await Promise.all(
-              result.jobs.slice(0, pageSize).map(async (job: any) => {
-                try {
-                  const highlights = await withTimeout(
-                    generateJobHighlights(job),
-                    3000 // Each job gets 3 seconds for highlights
-                  );
-                  return { ...job, highlights };
-                } catch (error) {
-                  console.error('[MCP] Highlights timeout for job:', job.id || job._id);
-                  // Fallback logic
-                  const fallbackHighlights = [
-                    `${job.company || job.company_name || 'Company'} seeking ${job.experience || 'candidate'}`,
-                    job.skills && job.skills.length > 0 
-                      ? `Requires: ${job.skills.slice(0, 5).join(', ')}`
-                      : 'View details for requirements'
-                  ];
-                  return { ...job, highlights: fallbackHighlights };
-                }
-              })
-            );
-            
-            // Map to safe format (preserve highlights)
-            const safeJobs = jobsWithHighlights.map((j: any) => ({
-              ...mapJobSafe(j),
-              highlights: j.highlights || []
+            const previewJobs = result.jobs.slice(0, pageSize);
+            // 使用完整的 job 数据（已包含所有字段，包括 skillsMustHave, skillsNiceToHave, workRights, jobUrl）
+            const safeJobs = previewJobs.map((job: any) => ({
+              ...mapJobSafe(job),
+              highlights: extractHighlights(job),
+              // 保留完整的字段（如果 job 已经有这些字段）
+              skillsMustHave: job.skillsMustHave || [],
+              skillsNiceToHave: job.skillsNiceToHave || [],
+              workRights: job.workRights,
+              jobUrl: job.jobUrl,
+              url: job.jobUrl || job.url || mapJobSafe(job).url, // 确保 url 优先使用 jobUrl
             }));
             
             // Generate Markdown cards preview with company info
@@ -2908,7 +2716,9 @@ export async function POST(request: NextRequest) {
             expectedPosition: user_profile.expectedPosition || 'Senior Professional',
             employmentHistory: user_profile.employmentHistory && user_profile.employmentHistory.length > 0 ? user_profile.employmentHistory : [
               { company: 'Previous Company', position: 'Professional Role' }
-            ]
+            ],
+            workingRightsAU: user_profile.workingRightsAU || undefined,
+            workingRightsOther: user_profile.workingRightsOther || undefined
           };
           
           console.log('[MCP] recommend_jobs - Final profile:', JSON.stringify(defaultProfile, null, 2));
@@ -2916,7 +2726,6 @@ export async function POST(request: NextRequest) {
           try {
             // 1. 根据搜索条件从数据库获取职位
             const { db } = await connectToMongoDB();
-            const collection = db.collection('hera_jobs.jobs');
             
             // ========================================
             // PR-1: 三层去重逻辑（AgentKit Memory 增强）
@@ -2977,47 +2786,29 @@ export async function POST(request: NextRequest) {
             
             console.log(`[MCP] recommend_jobs - EXCLUDE_SET size: ${EXCLUDE_SET.size}`);
             
-            // 构建查询条件
-            const query: any = { is_active: { $ne: false } };
-            
-            // 统一排除逻辑（限制上限，避免 $nin 过大影响性能）
-            if (EXCLUDE_SET.size > 0) {
-              const EXCLUDE_IDS = Array.from(EXCLUDE_SET).slice(-2000);
-              query.id = { $nin: EXCLUDE_IDS };
-            }
-            
-            // 如果启用了严格筛选且有明确的搜索条件
-            if (strict_filters && (searchCriteria.jobTitle || searchCriteria.city)) {
-              if (searchCriteria.jobTitle) {
-                query.$or = [
-                  { title: { $regex: searchCriteria.jobTitle, $options: 'i' } },
-                  { summary: { $regex: searchCriteria.jobTitle, $options: 'i' } }
-                ];
-              }
-              if (searchCriteria.city) {
-                query.location = { $regex: searchCriteria.city, $options: 'i' };
-              }
-            } else if (searchCriteria.city) {
-              // 只有城市筛选
-              query.location = { $regex: searchCriteria.city, $options: 'i' };
-            }
-            
-            console.log('[MCP] Database query:', JSON.stringify(query, null, 2));
-            
             // 获取更多职位用于筛选，确保有足够的选择（从30提升到40，便于评分挑选）
             const searchLimit = Math.max(limit * 3, 40);
-            const recentJobs = await collection
-              .find(query)
-              .sort({ updatedAt: -1, createdAt: -1 })
-              .limit(searchLimit)
-              .toArray();
+          const queryOptions: any = {
+            page: 1,
+            pageSize: searchLimit,
+            excludeIds: Array.from(EXCLUDE_SET).slice(-2000),
+          };
+          const trimmedJobTitle = searchCriteria.jobTitle?.trim();
+          const trimmedCity = searchCriteria.city?.trim();
+          if (strict_filters && (trimmedJobTitle || trimmedCity)) {
+            if (trimmedJobTitle) {
+              queryOptions.jobTitle = trimmedJobTitle;
+            }
+            if (trimmedCity) {
+              queryOptions.city = trimmedCity;
+            }
+          } else if (trimmedCity) {
+            queryOptions.city = trimmedCity;
+          }
 
-            console.log(`[MCP] Database returned ${recentJobs.length} jobs after excluding ${exclude_ids.length} via exclude_ids`);
+            const { jobs: transformedJobs } = await queryJobsWithFilters(queryOptions);
 
-            // 转换为前端格式
-            const transformedJobs = recentJobs
-              .map((job: any) => transformMongoDBJobToFrontendFormat(job))
-              .filter((job: any) => job !== null);
+            console.log(`[MCP] Database returned ${transformedJobs.length} jobs after excluding ${exclude_ids.length} via exclude_ids`);
 
             if (transformedJobs.length === 0) {
               return json200({
@@ -3033,37 +2824,17 @@ export async function POST(request: NextRequest) {
               }, { "X-MCP-Trace-Id": traceId });
             }
 
-            // 2. 发送给mirror-jobs进行基础分析
-            const mirrorResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/mirror-jobs`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                jobs: transformedJobs,
-                jobTitle: defaultProfile.jobTitles?.[0] || 'General',
-                city: defaultProfile.city,
-                limit: limit,
-                page: 1,
-                isHotJob: false,
-                platform: 'recommendation'
-              })
-            });
+            // 2. 直接使用数据库中的 jobs（已有完整的 tags：summary, highlights, skillsMustHave, skillsNiceToHave, workRights 等）
+            // 不再调用 mirror-jobs POST，因为数据库已有完整数据
+            console.log(`[MCP] Using database jobs directly (${transformedJobs.length} jobs with complete tags)`);
 
-            if (!mirrorResponse.ok) {
-              throw new Error(`Mirror-jobs API error: ${mirrorResponse.status}`);
-            }
-
-            const mirrorResult = await mirrorResponse.json();
-            const analyzedJobs = mirrorResult.jobs || [];
-
-            // 3. 对每个职位进行用户匹配分析
-            console.log(`[MCP] Starting GPT matching for ${analyzedJobs.length} jobs`);
+            // 3. 对每个职位进行用户匹配分析（只调用 jobMatch API 获取 matchScore 和 listSummary）
+            console.log(`[MCP] Starting GPT matching for ${transformedJobs.length} jobs`);
             const scoredJobs = await Promise.all(
-              analyzedJobs.map(async (job: any) => {
+              transformedJobs.map(async (job: any) => {
                 try {
                   console.log(`[MCP] Calling GPT for job: ${job.title}`);
-                  const gptApiUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/gpt-services/jobMatch`;
+                  const gptApiUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3002'}/api/gpt-services/jobMatch`;
                   console.log(`[MCP] GPT API URL: ${gptApiUrl}`);
                   const matchResponse = await fetch(gptApiUrl, {
     method: 'POST',
@@ -3074,7 +2845,16 @@ export async function POST(request: NextRequest) {
                       jobTitle: job.title,
                       jobDescription: job.description || '',
                       jobRequirements: job.requirements || [],
-                      jobLocation: job.location,
+                      jobLocation: Array.isArray(job.location) ? job.location.join(', ') : job.location,
+                      // ✅ 传入数据库中的完整 tags（复用数据库数据）
+                      skillsMustHave: job.skillsMustHave || [],
+                      skillsNiceToHave: job.skillsNiceToHave || [],
+                      keyRequirements: job.keyRequirements || [],
+                      highlights: job.highlights || [],
+                      workMode: job.workMode || '',
+                      salary: job.salary || '',
+                      industry: job.industry || '',
+                      workRights: job.workRights || undefined,
                       userProfile: {
                         jobTitles: defaultProfile.jobTitles.length > 0 ? defaultProfile.jobTitles : [job.title],
                         skills: defaultProfile.skills,
@@ -3085,7 +2865,9 @@ export async function POST(request: NextRequest) {
                         expectedSalary: defaultProfile.expectedSalary,
                         currentPosition: defaultProfile.currentPosition,
                         expectedPosition: defaultProfile.expectedPosition,
-                        employmentHistory: defaultProfile.employmentHistory
+                        employmentHistory: defaultProfile.employmentHistory,
+                        workingRightsAU: defaultProfile.workingRightsAU,
+                        workingRightsOther: defaultProfile.workingRightsOther
                       }
                     }),
                   });
@@ -3124,7 +2906,14 @@ export async function POST(request: NextRequest) {
                     matchScore: validatedMatchScore,
                     subScores: validatedSubScores,
                     matchAnalysis: matchData.analysis || 'Analysis not available',
-                    matchHighlights: matchData.highlights || [],
+                    // 优先使用 GPT 返回的 highlights，否则使用数据库字段
+                    matchHighlights: (matchData.highlights && matchData.highlights.length > 0)
+                      ? matchData.highlights
+                      : (job.highlights && job.highlights.length > 0)
+                        ? job.highlights.slice(0, 3)
+                        : (job.keyRequirements && job.keyRequirements.length > 0)
+                          ? job.keyRequirements.slice(0, 3)
+                          : [],
                     summary: matchData.listSummary || job.summary || `${job.title} position at ${job.company}`,
                     detailedSummary: matchData.detailedSummary || job.detailedSummary || job.description?.substring(0, 200) + '...',
                     keyRequirements: matchData.keyRequirements || [],
@@ -3147,11 +2936,16 @@ export async function POST(request: NextRequest) {
                       other: Math.min(Math.max(65 + randomOffset, 50), 85)
                     },
                     matchAnalysis: 'Unable to analyze - using fallback scoring',
-                    matchHighlights: [
-                      `Basic match: ${job.title} position`,
-                      `Location: ${job.location}`,
-                      `Company: ${job.company}`
-                    ],
+                    // 优先使用数据库字段，最后才用默认值
+                    matchHighlights: (job.highlights && job.highlights.length > 0)
+                      ? job.highlights.slice(0, 3)
+                      : (job.keyRequirements && job.keyRequirements.length > 0)
+                        ? job.keyRequirements.slice(0, 3)
+                        : [
+                            `Basic match: ${job.title} position`,
+                            `Location: ${job.location}`,
+                            `Company: ${job.company}`
+                          ],
                     summary: job.summary || `${job.title} position at ${job.company}`,
                     detailedSummary: job.detailedSummary || job.description?.substring(0, 200) + '...',
                     keyRequirements: [],
@@ -3166,16 +2960,61 @@ export async function POST(request: NextRequest) {
               .sort((a, b) => b.matchScore - a.matchScore)
               .slice(0, 5);
 
-            // 5. 按照现有UI规则格式化显示，确保分数格式正确
-            const recommendations = recommendedJobs.map((job, index) => 
-              `**${index + 1}. ${job.title}** at ${job.company}\n` +
-              `📍 ${job.location} | 💼 ${job.jobType || 'Full-time'} | 💰 ${job.salary || 'Salary not specified'}\n` +
-              `\n**Job Highlights:**\n${job.matchHighlights?.map((h: string) => `• ${h}`).join('\n') || 'Analysis not available'}\n` +
-              `\n**Match Score: ${job.matchScore}%**\n` +
-              `• Experience: ${job.subScores.experience}% | Skills: ${job.subScores.skills}% | Industry: ${job.subScores.industry}% | Other: ${job.subScores.other}%\n` +
-              `\n🔗 [View Job](${job.url})\n` +
-              `\n---\n`
-            ).join('\n');
+            // 5. 按照现有UI规则格式化显示，确保分数格式正确（参考 JobDetailPanel 的展示方式）
+            const recommendations = recommendedJobs.map((job, index) => {
+              const parts = [
+                `**${index + 1}. ${job.title}** at ${job.company}`,
+                `📍 ${job.location} | 💼 ${job.jobType || 'Full-time'} | 💰 ${job.salary || 'Salary not specified'}`,
+              ];
+
+              // Job Highlights (优先使用 matchHighlights，已包含数据库 fallback)
+              const highlights = job.matchHighlights && job.matchHighlights.length > 0
+                ? job.matchHighlights
+                : [];
+              
+              if (highlights.length > 0) {
+                parts.push(`\n**Job Highlights:**`);
+                highlights.forEach((h: string) => parts.push(`• ${h}`));
+              }
+
+              // Match Score
+              parts.push(`\n**Match Score: ${job.matchScore}%**`);
+              parts.push(`• Experience: ${job.subScores.experience}% | Skills: ${job.subScores.skills}% | Industry: ${job.subScores.industry}% | Other: ${job.subScores.other}%`);
+
+              // Must-Have Skills (如果有)
+              if (job.skillsMustHave && Array.isArray(job.skillsMustHave) && job.skillsMustHave.length > 0) {
+                parts.push(`\n**Must-Have Skills:**`);
+                job.skillsMustHave.slice(0, 5).forEach((skill: string) => parts.push(`• ${skill}`));
+              }
+
+              // Nice-to-Have Skills (如果有)
+              if (job.skillsNiceToHave && Array.isArray(job.skillsNiceToHave) && job.skillsNiceToHave.length > 0) {
+                parts.push(`\n**Nice-to-Have Skills:**`);
+                job.skillsNiceToHave.slice(0, 5).forEach((skill: string) => parts.push(`• ${skill}`));
+              }
+
+              // Work Rights (如果有)
+              if (job.workRights) {
+                const workRightsParts = [];
+                if (job.workRights.requiresStatus) {
+                  workRightsParts.push(`Requires: ${job.workRights.requiresStatus}`);
+                }
+                if (job.workRights.sponsorship && job.workRights.sponsorship !== 'unknown') {
+                  workRightsParts.push(`Sponsorship: ${job.workRights.sponsorship}`);
+                }
+                if (workRightsParts.length > 0) {
+                  parts.push(`\n**Work Rights:**`);
+                  workRightsParts.forEach((wr: string) => parts.push(`• ${wr}`));
+                }
+              }
+
+              // View Job Link (优先使用 jobUrl，否则使用 url)
+              const viewJobUrl = job.jobUrl || job.url;
+              parts.push(`\n🔗 [View Job](${viewJobUrl})`);
+              parts.push(`\n---`);
+
+              return parts.join('\n');
+            }).join('\n\n');
 
             // 构建基础摘要
             let summary = `Found ${recommendedJobs.length} personalized job recommendations based on recent postings. ` +
@@ -3340,7 +3179,6 @@ export async function POST(request: NextRequest) {
           
           try {
             const { db } = await connectToMongoDB();
-            const collection = db.collection('hera_jobs.jobs');
             
             // ========================================
             // 汇总所有要排除的职位（多层）
@@ -3448,16 +3286,15 @@ export async function POST(request: NextRequest) {
             let preferences: any = null;
             if (liked_job_ids.length > 0) {
               try {
-                const liked_jobs = await collection.find({
-                  id: { $in: liked_job_ids }
-                }).toArray();
+                const liked_jobs = await queryJobsByIds(liked_job_ids);
                 
                 if (liked_jobs.length > 0) {
+                  const extractLocations = (loc: any) => Array.isArray(loc) ? loc : (loc ? [loc] : []);
                   preferences = {
                     preferred_titles: [...new Set(liked_jobs.map((j: any) => j.title))],
                     preferred_companies: [...new Set(liked_jobs.map((j: any) => j.company))],
-                    preferred_skills: liked_jobs.flatMap((j: any) => j.skills || []),
-                    preferred_locations: [...new Set(liked_jobs.map((j: any) => j.location))]
+                    preferred_skills: liked_jobs.flatMap((j: any) => j.skillsMustHave?.length ? j.skillsMustHave : (j.skills || [])),
+                    preferred_locations: [...new Set(liked_jobs.flatMap((j: any) => extractLocations(j.location)))]
                   };
                   console.log('[refine] User preferences extracted from', liked_jobs.length, 'liked jobs');
                 }
@@ -3469,68 +3306,16 @@ export async function POST(request: NextRequest) {
             // ========================================
             // 构建查询（排除 EXCLUDE_SET + 必须过滤）
             // ========================================
-            const query: any = {
-              is_active: { $ne: false },
-              id: { $nin: Array.from(EXCLUDE_SET).slice(-2000) }
-            };
-            
-            // 必须过滤：city 和 job_title（如果提供）
-            if (effectiveCity) {
-              query.location = { $regex: effectiveCity, $options: 'i' };
-            }
-            if (effectiveJobTitle) {
-              query.$or = [
-                { title: { $regex: effectiveJobTitle, $options: 'i' } },
-                { summary: { $regex: effectiveJobTitle, $options: 'i' } }
-              ];
-            }
-            
-            // 如果有偏好，作为加分项而不是硬过滤（在打分阶段处理）
-            // 这样可以避免查询结果太少
-            
-            console.log('[refine] Query:', JSON.stringify(query, null, 2));
-            
-            // ========================================
-            // 查询候选（保持 30）
-            // ========================================
             const searchLimit = 30;
-            let candidates = await collection.find(query)
-              .sort({ createdAt: -1 })
-              .limit(searchLimit)
-              .toArray();
+            const { jobs: candidates } = await queryJobsWithFilters({
+              jobTitle: effectiveJobTitle,
+              city: effectiveCity,
+              page: 1,
+              pageSize: searchLimit,
+              excludeIds: Array.from(EXCLUDE_SET).slice(-2000),
+            });
             
             console.log(`[refine] Found ${candidates.length} candidates after excluding ${EXCLUDE_SET.size}`);
-
-            // 追加一道 _id 维度的排除兜底（若历史里存的是 _id 字符串）
-            const beforeIdFilter = candidates.length;
-            candidates = candidates.filter((doc: any) => !EXCLUDE_SET.has(String(doc?._id || '')));
-            if (candidates.length !== beforeIdFilter) {
-              console.log(`[refine] Post-fetch _id filter removed ${beforeIdFilter - candidates.length} candidates`);
-            }
-            
-            // 如果候选不足，回退查询
-            if (candidates.length < limit) {
-              console.log('[refine] Not enough candidates, trying fallback query');
-              const fbQuery: any = {
-                is_active: { $ne: false },
-                id: { $nin: Array.from(EXCLUDE_SET).slice(-2000) }
-              };
-              if (effectiveCity) {
-                fbQuery.location = { $regex: effectiveCity, $options: 'i' };
-              }
-              if (effectiveJobTitle) {
-                fbQuery.$or = [
-                  { title: { $regex: effectiveJobTitle, $options: 'i' } },
-                  { summary: { $regex: effectiveJobTitle, $options: 'i' } }
-                ];
-              }
-              const fallback = await collection.find(fbQuery)
-                .sort({ createdAt: -1 })
-                .limit(searchLimit)
-                .toArray();
-              candidates.push(...fallback);
-              console.log(`[refine] After fallback: ${candidates.length} total candidates (fbQuery=${JSON.stringify(fbQuery)})`);
-            }
             
             // ========================================
             // 轻量打分（如果有偏好）
@@ -3549,13 +3334,15 @@ export async function POST(request: NextRequest) {
                 if (preferences.preferred_companies.includes(job.company)) score += 20;
                 
                 // 技能匹配 每个 +5（上限 25）
-                const matching_skills = (job.skills || []).filter((s: string) => 
+                const jobSkillPool = job.skillsMustHave?.length ? job.skillsMustHave : (job.skills || []);
+                const matching_skills = jobSkillPool.filter((s: string) => 
                   preferences.preferred_skills.includes(s)
                 );
                 score += Math.min(matching_skills.length * 5, 25);
                 
                 // 地点匹配 +10
-                if (preferences.preferred_locations.includes(job.location)) score += 10;
+                const jobLocations = Array.isArray(job.location) ? job.location : (job.location ? [job.location] : []);
+                if (jobLocations.some((loc: string) => preferences.preferred_locations.includes(loc))) score += 10;
                 
                 return { ...job, personalized_score: Math.min(score, 100) };
               });
@@ -3660,10 +3447,12 @@ export async function POST(request: NextRequest) {
               const score_text = preferences && job.personalized_score 
                 ? `🎯 Personalized Score: ${job.personalized_score}%\n` 
                 : '';
+              // View Job Link (优先使用 jobUrl，否则使用 url)
+              const viewJobUrl = job.jobUrl || job.url;
               return `**${index + 1}. ${job.title}** at ${job.company}\n` +
                 `📍 ${job.location} | 💼 ${job.jobType || 'Full-time'} | 💰 ${job.salary || 'Not specified'}\n` +
                 score_text +
-                `🔗 [View Job](${job.url})\n` +
+                `🔗 [View Job](${viewJobUrl})\n` +
                 `---\n`;
             }).join('\n');
             
@@ -3754,7 +3543,7 @@ export async function POST(request: NextRequest) {
             }
 
             const { db } = await connectToMongoDB();
-            const collection = db.collection('hera_jobs.jobs');
+            const collection = db.collection('jobs');
 
             // =============================
             // Build EXCLUDE_SET (multi-layer)
@@ -3842,7 +3631,7 @@ export async function POST(request: NextRequest) {
             // =============================
             const query: any = { is_active: { $ne: false } };
             if (EXCLUDE_SET.size > 0) query.id = { $nin: Array.from(EXCLUDE_SET).slice(-2000) };
-            if (effectiveCity) query.location = { $regex: effectiveCity, $options: 'i' };
+            if (effectiveCity) query.locations = { $regex: effectiveCity, $options: 'i' };
             if (effectiveTitle) {
               query.$or = [
                 { title: { $regex: effectiveTitle, $options: 'i' } },
@@ -4063,7 +3852,7 @@ export async function POST(request: NextRequest) {
             if (job_id) {
               try {
                 const { db } = await connectToMongoDB();
-                const collection = db.collection('hera_jobs.jobs');
+                const collection = db.collection('jobs');
                 const job = await collection.findOne({ id: job_id });
                 
                 if (job) {
@@ -4806,4 +4595,15 @@ export async function POST(request: NextRequest) {
     // ============================================
   }
 }
+
+
+
+
+
+
+
+
+
+
+
 

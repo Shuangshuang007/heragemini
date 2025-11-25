@@ -18,7 +18,14 @@ interface TailorPreviewProps {
   onCancel: () => void;
 }
 
-export function TailorPreview({ job, userProfile, onGenerate, onCancel }: TailorPreviewProps) {
+const formatJobLocation = (location: Job['location']) => {
+  if (Array.isArray(location)) {
+    return location.join(', ');
+  }
+  return location || '';
+};
+
+export function TailorPreview({ job: initialJob, userProfile, onGenerate, onCancel }: TailorPreviewProps) {
   // 重构后的状态管理
   const [isEditing, setIsEditing] = useState(true); // 默认开启编辑模式
   const [isTailoring, setIsTailoring] = useState(false);
@@ -53,12 +60,95 @@ export function TailorPreview({ job, userProfile, onGenerate, onCancel }: Tailor
     const [coverLetterPreviewKey, setCoverLetterPreviewKey] = useState(0);
   
   // localStorage草稿管理
-  const draftKey = `tailor_draft:${job.id}`;
+  const draftKey = `tailor_draft:${initialJob?.id || 'unknown'}`;
   
   // 订阅状态管理
   const premiumStatus = usePremiumStatus();
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentErrorCode, setPaymentErrorCode] = useState<string>('');
+  
+  const [jobDetail, setJobDetail] = useState<Job | null>(null);
+  const [jobDetailLoading, setJobDetailLoading] = useState(false);
+
+  // 只在 Job Details 展开时才 fetch 详细数据（避免不必要的 GPT 调用）
+  useEffect(() => {
+    let cancelled = false;
+    
+    // 如果 Job Details 未展开，不 fetch
+    if (!isJobDetailsExpanded) {
+      setJobDetail(null);
+      setJobDetailLoading(false);
+      return;
+    }
+    
+    // 如果 Job Details 已展开，但还没有 job id，不 fetch
+    if (!initialJob?.id) {
+      return;
+    }
+    
+    // ✅ 检查是否需要传递 userProfile（如果数据库没有 detailedSummary 或 matchAnalysis）
+    const needsProfile = !initialJob.detailedSummary || !initialJob.matchAnalysis;
+    
+    // ✅ 准备 userProfile 参数（如果需要）
+    let userProfileParam = '';
+    if (needsProfile && userProfile) {
+      try {
+        // 只传递必要的字段
+        // 从 employment 历史记录中提取当前职位（如果有）
+        const currentEmployment = userProfile.employment?.find(emp => emp.isPresent) || userProfile.employment?.[0];
+        const currentPosition = currentEmployment?.position || '';
+        
+        // expectedPosition 使用 jobTitle（期望职位）
+        const expectedPosition = Array.isArray(userProfile.jobTitle) 
+          ? userProfile.jobTitle[0] || '' 
+          : (userProfile.jobTitle || '');
+        
+        const profileData = {
+          skills: userProfile.skills || [],
+          city: userProfile.city || '',
+          seniority: userProfile.seniority || '',
+          openToRelocate: userProfile.openForRelocation === 'yes',
+          careerPriorities: userProfile.careerPriorities || [],
+          expectedPosition: expectedPosition,
+          currentPosition: currentPosition
+        };
+        userProfileParam = `?userProfile=${encodeURIComponent(JSON.stringify(profileData))}`;
+      } catch (error) {
+        console.warn('[TailorPreview] Failed to prepare userProfile:', error);
+      }
+    }
+    
+    setJobDetail(null);
+    setJobDetailLoading(true);
+    fetch(`/api/jobs/${initialJob.id}${userProfileParam}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setJobDetail(data.job);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn('[TailorPreview] Failed to load job detail:', error);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setJobDetailLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialJob?.id, initialJob?.detailedSummary, initialJob?.matchAnalysis, isJobDetailsExpanded, userProfile]);
+
+  const job = jobDetail || initialJob;
   
   // 调试：检查job对象
   console.log('🔍 TailorPreview - job对象:', {
@@ -150,9 +240,14 @@ export function TailorPreview({ job, userProfile, onGenerate, onCancel }: Tailor
   // 获取 Job requirements 并应用标准化逻辑
   const sourceReqs = job.keyRequirements?.length
     ? job.keyRequirements
+    : job.skillsMustHave?.length
+      ? job.skillsMustHave
     : job.requirements || [];
-  const skills = job.skills || [];
-  const allReqs = [...filterKeyRequirements(sourceReqs), ...skills].map(formatTag);
+  const skills = job.skillsMustHave?.length
+    ? job.skillsMustHave
+    : job.skills || [];
+  const niceSkills = job.skillsNiceToHave || [];
+  const allReqs = [...filterKeyRequirements(sourceReqs), ...skills, ...niceSkills].map(formatTag);
 
   // 调用匹配函数
   const { met, missing } = diffWithProfile(job, userProfile);
@@ -256,7 +351,7 @@ export function TailorPreview({ job, userProfile, onGenerate, onCancel }: Tailor
       experience: editableData.experience && editableData.experience.length > 0 ? editableData.experience : (userProfile.employment || []).map((job: any) => ({
         title: job.position || job.title || '',
         company: job.company || '',
-        location: typeof job.location === 'string' ? job.location : '',
+        location: formatJobLocation(job.location),
         startDate: job.startDate || '',
         endDate: job.isPresent ? 'Present' : job.endDate || '',
         description: job.description || '',
@@ -327,7 +422,7 @@ export function TailorPreview({ job, userProfile, onGenerate, onCancel }: Tailor
       experience: Array.isArray(resumeData.experience) ? resumeData.experience.map((job: any) => ({
         title: job.title || '',
         company: job.company || '',
-        location: typeof job.location === 'string' ? job.location : '',
+        location: formatJobLocation(job.location),
         startDate: job.startDate || '',
         endDate: job.endDate || '',
         description: job.description || '',
@@ -510,7 +605,7 @@ export function TailorPreview({ job, userProfile, onGenerate, onCancel }: Tailor
       const jobContext = {
         title: job.title,
         company: job.company,
-        location: job.location,
+        location: formatJobLocation(job.location),
         description: job.description || '',
         summary: job.summary || '',
         detailedSummary: job.detailedSummary || '',
@@ -1008,7 +1103,7 @@ ${today}
 
 Hiring Manager
 ${job.company || 'Company Name'}
-${job.location || 'Location'}
+${formatJobLocation(job.location) || 'Location'}
 
 ${cleanedContent}
 
@@ -1132,6 +1227,11 @@ ${name}`;
             </svg>
           </div>
         </div>
+        {jobDetailLoading && (
+          <p className="text-xs text-blue-600 mt-2">
+            Loading latest job details...
+          </p>
+        )}
         
         {/* 可折叠内容 - 直接使用JobDetailPanel组件 */}
         {isJobDetailsExpanded && (

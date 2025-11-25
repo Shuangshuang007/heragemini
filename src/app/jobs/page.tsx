@@ -451,13 +451,24 @@ function JobsPageContent() {
                     jobDescription: job.description,
                     jobRequirements: job.requirements || [],
                     jobLocation: job.location,
+                    // ✅ 传递数据库中的新字段
+                    skillsMustHave: job.skillsMustHave || [],
+                    skillsNiceToHave: job.skillsNiceToHave || [],
+                    keyRequirements: job.keyRequirements || [],
+                    highlights: job.highlights || [],
+                    workMode: job.workMode || '',
+                    salary: job.salary || '',
+                    industry: job.industry || '',
+                    workRights: job.workRights, // ✅ 新增：工作权限
                     userProfile: {
                       jobTitles: [job.title],
                       skills: job.skills || [],
                       city: job.location,
                       seniority: job.experience,
                       openToRelocate: job.experience?.toLowerCase().includes('senior'),
-                      careerPriorities: userProfile?.careerPriorities || []
+                      careerPriorities: userProfile?.careerPriorities || [],
+                      workingRightsAU: userProfile?.workingRightsAU || '', // ✅ 新增
+                      workingRightsOther: userProfile?.workingRightsOther || '' // ✅ 新增
                     }
                   }),
                 });
@@ -472,11 +483,14 @@ function JobsPageContent() {
                   ...job,
                   matchScore: matchData.score,
                   subScores: matchData.subScores,
-                  matchAnalysis: matchData.analysis,
-                  matchHighlights: matchData.highlights,
-                  summary: matchData.listSummary,
-                  detailedSummary: matchData.detailedSummary,
-                  keyRequirements: matchData.keyRequirements
+                  // ✅ 列表视图：使用数据库中的 highlights 和 keyRequirements（如果存在），否则使用 GPT 生成的
+                  matchHighlights: job.highlights && job.highlights.length > 0 ? job.highlights : (matchData.highlights || []),
+                  keyRequirements: job.keyRequirements && job.keyRequirements.length > 0 ? job.keyRequirements : (matchData.keyRequirements || []),
+                  // ✅ 列表视图：使用 GPT 生成的 matchSummary 作为 summary
+                  summary: matchData.listSummary || job.summary || '',
+                  // ✅ 列表视图：detailedSummary 和 analysis 留空，在详情页生成
+                  detailedSummary: job.detailedSummary || '', // 使用数据库中的值（如果有）
+                  matchAnalysis: '' // 列表视图不需要详细 analysis
                 };
               } catch (error) {
                 console.error('Error getting match score:', error);
@@ -1539,4 +1553,4 @@ export default function JobsPage() {
       <JobsPageContent />
     </Suspense>
   );
-} 
+}

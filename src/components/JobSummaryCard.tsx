@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import type { Job } from '../types/job';
-import { normalizeEmploymentType, parseWorkMode, formatSalaryWithBenefits, normalizeExperienceTag } from '../utils/employmentUtils';
+import { normalizeEmploymentType, parseWorkMode, formatSalaryWithBenefits, normalizeExperienceTag, isValidSalary } from '../utils/employmentUtils';
 import { deduplicateJobTitle } from '../utils/titleDeduplicator';
 
 interface JobSummaryCardProps {
@@ -75,6 +75,13 @@ const PROPER_NOUNS = [
   'CPA', 'CFA', 'CA', 'ACCA', 'CIMA', 'CMA', 'CGA', 'CIA', 'CISA', 'CISSP', 'PMP', 'PRINCE2', 'ITIL', 'Six Sigma', 'Lean', 'Agile', 'Scrum', 'Kanban', 'SAFe', 'TOGAF', 'COBIT', 'ISO 27001', 'ISO 9001', 'GDPR', 'SOX', 'IFRS', 'GAAP', 'ASIC', 'APRA', 'ATO', 'ASX', 'ASIC', 'FASB', 'IASB', 'XBRL', 'ERP', 'SAP', 'Oracle', 'QuickBooks', 'Xero', 'MYOB', 'Reckon', 'Intuit', 'BlackLine', 'Workiva', 'NetSuite', 'Salesforce', 'HubSpot', 'Tableau', 'Power BI', 'Qlik', 'Alteryx', 'KNIME', 'R', 'Python', 'SQL', 'VBA', 'Excel', 'Access', 'Word', 'PowerPoint', 'Outlook', 'Teams', 'SharePoint', 'OneDrive', 'Office 365', 'Microsoft 365', 'Google Workspace', 'G Suite', 'Slack', 'Zoom', 'Webex', 'Teams', 'Skype', 'Trello', 'Asana', 'Monday.com', 'Notion', 'Airtable', 'Smartsheet', 'Jira', 'Confluence', 'Bitbucket', 'GitHub', 'GitLab', 'Azure DevOps', 'Jenkins', 'Bamboo', 'CircleCI', 'Travis CI', 'GitLab CI', 'GitHub Actions', 'Docker', 'Kubernetes', 'AWS', 'Azure', 'GCP', 'Google Cloud', 'IBM Cloud', 'Oracle Cloud', 'Salesforce Cloud', 'SAP Cloud', 'Workday', 'SuccessFactors', 'BambooHR', 'ADP', 'Paychex', 'Gusto', 'Rippling', 'Justworks', 'TriNet', 'Insperity', 'Paylocity', 'Paycom', 'Paycor', 'Namely', 'Zenefits', 'Gusto', 'Rippling', 'Justworks', 'TriNet', 'Insperity', 'Paylocity', 'Paycom', 'Paycor', 'Namely', 'Zenefits'
 ];
 
+const getPrimaryLocation = (location: Job['location']): string => {
+  if (Array.isArray(location)) {
+    return location[0] || '';
+  }
+  return location || '';
+};
+
 function formatTag(tag: string) {
   if (!tag) return '';
   // 精确匹配白名单（区分大小写）
@@ -137,13 +144,26 @@ export function JobSummaryCard({
   const workModeTag = parseWorkMode(job.workMode || '', job.description || '')
     ? formatTag(parseWorkMode(job.workMode || '', job.description || ''))
     : null;
-  // 只取第一个experienceTag，并使用标准化函数
-  const experienceTag = (job.tags || []).find(tag => /experience|graduate|entry level|senior|junior|mid-level|middle level|lead/i.test(tag)) || null;
-  const normalizedExperienceTag = experienceTag ? normalizeExperienceTag(experienceTag) : null;
-  const formattedExperienceTag = normalizedExperienceTag ? formatTag(normalizedExperienceTag) : null;
-  // 技能/要求Tag（优先用keyRequirements，否则用skills/requirements，最多2-3个，兜底时过滤）
+  // 经验tag：优先使用结构化字段，其次回退旧tags
+  const legacyExperienceTag = (job.tags || []).find(tag =>
+    /experience|graduate|entry level|senior|junior|mid-level|middle level|lead/i.test(tag)
+  );
+  const formattedExperienceTag = job.experienceTag
+    ? (() => {
+        const normalized = normalizeExperienceTag(job.experienceTag);
+        return normalized ? formatTag(normalized) : null;
+      })()
+    : legacyExperienceTag
+      ? (() => {
+          const normalized = normalizeExperienceTag(legacyExperienceTag);
+          return normalized ? formatTag(normalized) : null;
+        })()
+      : null;
+  // 技能/要求Tag（优先用结构化skills/keyRequirements，最多2-3个）
   let skillTags: string[] = [];
-  if (job.keyRequirements && job.keyRequirements.length > 0) {
+  if (job.skillsMustHave && job.skillsMustHave.length > 0) {
+    skillTags = job.skillsMustHave.slice(0, 3).map(formatTag);
+  } else if (job.keyRequirements && job.keyRequirements.length > 0) {
     skillTags = job.keyRequirements.slice(0, 3).map(formatTag);
   } else if ((job.skills && job.skills.length > 0) || (job.requirements && job.requirements.length > 0)) {
     const rawTags = [
@@ -209,10 +229,18 @@ export function JobSummaryCard({
           
           {/* 位置和薪资信息 */}
           <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
-            <span>{job.location}</span>
-            {job.salary && (
-              <span>• {formatSalaryWithBenefits(job.salary)}</span>
-            )}
+            <span>{getPrimaryLocation(job.location)}</span>
+            {(() => {
+              const isValid = isValidSalary(job.salary);
+              if (process.env.NODE_ENV === 'development' && job.salary) {
+                console.log('[JobSummaryCard] Salary check:', {
+                  raw: job.salary,
+                  isValid,
+                  formatted: isValid && job.salary ? formatSalaryWithBenefits(job.salary) : 'N/A'
+                });
+              }
+              return isValid && job.salary ? <span>• {formatSalaryWithBenefits(job.salary)}</span> : null;
+            })()}
             {job.postedDate && (
               (() => {
                 const daysAgo = getDaysAgo(job.postedDate);
@@ -256,9 +284,9 @@ export function JobSummaryCard({
                   </span>
                 )}
               </div>
-              {job.matchHighlights && job.matchHighlights.length > 0 && (
+              {(job.matchHighlights && job.matchHighlights.length > 0) || (job.summary && job.summary.trim()) ? (
                 <div className="text-sm text-gray-600 space-y-1">
-                  {job.matchHighlights.map((highlight, index) => {
+                  {job.matchHighlights && job.matchHighlights.length > 0 && job.matchHighlights.map((highlight, index) => {
                     if (isTrivial(highlight)) return null;
                     return (
                       <div key={index} className="flex items-start">
@@ -267,8 +295,15 @@ export function JobSummaryCard({
                       </div>
                     );
                   })}
+                  {/* 第四点：listSummary（来自 jobMatch API） */}
+                  {job.summary && job.summary.trim() && (
+                    <div className="flex items-start">
+                      <span className="mr-2">•</span>
+                      <span>{job.summary.replace(/[。.]$/g, '').trim()}</span>
+                    </div>
+                  )}
                 </div>
-              )}
+              ) : null}
             </div>
           )}
           

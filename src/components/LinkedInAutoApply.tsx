@@ -68,7 +68,10 @@ export const LinkedInAutoApply: React.FC<LinkedInAutoApplyProps> = ({
       
       <div className="mt-2 text-sm text-gray-600">
         <a 
-          href={buildLinkedInSearchUrl(deduplicateJobTitle(job.title), job.location)}
+          href={buildLinkedInSearchUrl(
+            deduplicateJobTitle(job.title), 
+            Array.isArray(job.location) ? job.location[0] || '' : (job.location || '')
+          )}
           target="_blank"
           rel="noopener noreferrer"
           className="text-blue-600 hover:underline"

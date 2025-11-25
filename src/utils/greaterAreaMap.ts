@@ -1,9 +1,24 @@
+// 导入扩展的城市区域定义
+import { greaterAreaMapExtended } from './greaterAreaMapExtended';
+
 export interface GreaterAreaDefinition {
   core: string[];     // 方圆 10 公里以内（权重正常）
   fringe: string[];   // 10–20 公里，次优区域（权重可略降）
 }
 
-export const greaterAreaMap: Record<string, GreaterAreaDefinition> = {
+/**
+ * 从城市名称中提取基础城市名（去除州/省缩写）
+ * 例如: "New York, NY" -> "New York", "Sydney, NSW" -> "Sydney"
+ */
+function extractBaseCityName(city: string): string {
+  if (!city) return city;
+  // 匹配 ", XX" 格式（州/省缩写，通常是 2-3 个字母）
+  const match = city.match(/^(.+?),\s*[A-Z]{2,3}$/);
+  return match ? match[1].trim() : city.trim();
+}
+
+// 原有的 4 个城市定义
+const greaterAreaMapOriginal: Record<string, GreaterAreaDefinition> = {
   Melbourne: {
     core: [
       "Melbourne", "Southbank", "Docklands", "Carlton", "Parkville", "Fitzroy", "East Melbourne",
@@ -66,6 +81,21 @@ export const greaterAreaMap: Record<string, GreaterAreaDefinition> = {
   }
 };
 
+// 合并原有定义和扩展定义（扩展定义优先，覆盖同名城市）
+export const greaterAreaMap: Record<string, GreaterAreaDefinition> = {
+  ...greaterAreaMapOriginal,
+  ...greaterAreaMapExtended
+};
+
+/**
+ * 获取城市的基础名称（用于匹配 greaterAreaMap）
+ * @param city 城市名称（可能包含州/省缩写）
+ * @returns 基础城市名称
+ */
+export function getBaseCityName(city: string): string {
+  return extractBaseCityName(city);
+}
+
 /**
  * 检查位置是否属于fringe区域
  * @param location 职位位置
@@ -73,7 +103,8 @@ export const greaterAreaMap: Record<string, GreaterAreaDefinition> = {
  * @returns 是否为fringe区域
  */
 export function isFringeLocation(location: string, city: string): boolean {
-  const greaterArea = greaterAreaMap[city];
+  const baseCityName = extractBaseCityName(city);
+  const greaterArea = greaterAreaMap[baseCityName] || greaterAreaMap[city];
   if (!greaterArea) return false;
   
   const normalizedLocation = location.toLowerCase();

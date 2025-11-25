@@ -10,6 +10,13 @@ interface JobListProps {
   error?: string | null;
 }
 
+const formatLocation = (location: Job['location']) => {
+  if (Array.isArray(location)) {
+    return location[0] || '';
+  }
+  return location || '';
+};
+
 export default function JobList({ jobs, loading = false, error = null }: JobListProps) {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
@@ -31,7 +38,7 @@ export default function JobList({ jobs, loading = false, error = null }: JobList
             >
               <div className="font-semibold text-gray-900">{deduplicateJobTitle(job.title)}</div>
               <div className="text-sm text-gray-700">{job.company}</div>
-              <div className="text-xs text-gray-500">{job.location}</div>
+              <div className="text-xs text-gray-500">{formatLocation(job.location)}</div>
               <div className="text-xs text-gray-500 truncate">{job.description}</div>
             </div>
           ))}

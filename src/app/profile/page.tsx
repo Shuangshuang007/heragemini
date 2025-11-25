@@ -1796,6 +1796,7 @@ export default function ProfilePage() {
                 : country === 'Singapore' ? '新加坡'
                 : country === 'Taiwan' ? '台湾'
                 : country === 'United States' ? '美国'
+                : country === 'Japan' ? '日本'
                 : country
             }
           }))}
@@ -1820,6 +1821,7 @@ export default function ProfilePage() {
             const cityOptions = country ? cityOptionsMap[country as CountryKey] || [] : [];
             return (
               <Select
+                key={`city-select-${country || 'no-country'}`} // 添加 key 确保国家切换时组件重新渲染
                 options={cityOptions}
                 value={field.value || ''}
                 onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -1846,7 +1848,7 @@ export default function ProfilePage() {
         )}
       </div>
     </div>
-  ), [register, errors, t, language, watch, control]);
+  ), [register, errors, t, language, watch, control, selectedCountry, setValue]);
 
   const renderSocialFields = useMemo(() => (
     <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">

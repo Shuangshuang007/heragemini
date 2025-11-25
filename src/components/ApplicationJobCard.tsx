@@ -37,6 +37,13 @@ interface ApplicationJobCardProps {
   
 }
 
+const formatLocation = (location: Job['location']) => {
+  if (Array.isArray(location)) {
+    return location[0] || '';
+  }
+  return location || '';
+};
+
 export function ApplicationJobCard({ 
   job, 
   language, 
@@ -186,12 +193,12 @@ export function ApplicationJobCard({
         company: job.company,
         platform: job.platform,
         url: job.url,
-        location: job.location,
-        skills: job.skills,
+        location: formatLocation(job.location),
+        skills: job.skillsMustHave || job.skills,
         seniority: userProfile?.seniority || '',
         description: job.description,
-        requirements: job.requirements,
-        benefits: job.benefits,
+        requirements: job.keyRequirements || job.requirements,
+        benefits: job.summary ? [job.summary] : [],
         postedDate: job.postedDate,
         matchScore: job.matchScore,
         matchAnalysis: job.matchAnalysis,
@@ -346,12 +353,12 @@ export function ApplicationJobCard({
                         company: job.company,
                         platform: job.platform,
                         url: job.url,
-                        location: job.location,
-                        skills: job.skills,
+                        location: formatLocation(job.location),
+                        skills: job.skillsMustHave || job.skills,
                         seniority: userProfile?.seniority || '',
                         description: job.description,
-                        requirements: job.requirements,
-                        benefits: job.benefits,
+                        requirements: job.keyRequirements || job.requirements,
+                        benefits: job.summary ? [job.summary] : [],
                         postedDate: job.postedDate,
                         matchScore: job.matchScore,
                         matchAnalysis: job.matchAnalysis,
