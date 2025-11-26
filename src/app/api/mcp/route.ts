@@ -253,6 +253,11 @@ function buildMarkdownCards(q: { title: string; city: string }, jobs: any[], tot
       ].filter(Boolean).join(' | ');
       parts.push('');
       parts.push(`   **Match Score:** ${matchScore}${subScoreText ? ` (${subScoreText})` : ''}`);
+      // ✅ 显示 listSummary（如果有）
+      if (j.summary && typeof j.summary === 'string' && j.summary.trim()) {
+        parts.push('');
+        parts.push(`   ${j.summary.trim()}`);
+      }
     }
 
     // Highlights显示（如果有）
@@ -2960,61 +2965,40 @@ export async function POST(request: NextRequest) {
               .sort((a, b) => b.matchScore - a.matchScore)
               .slice(0, 5);
 
-            // 5. 按照现有UI规则格式化显示，确保分数格式正确（参考 JobDetailPanel 的展示方式）
-            const recommendations = recommendedJobs.map((job, index) => {
-              const parts = [
-                `**${index + 1}. ${job.title}** at ${job.company}`,
-                `📍 ${job.location} | 💼 ${job.jobType || 'Full-time'} | 💰 ${job.salary || 'Salary not specified'}`,
-              ];
+            // 5. 转换为 safeJobs 格式，确保包含所有 tags、jobUrl 和 summary（listSummary）
+            const safeJobs = recommendedJobs.map((job: any) => ({
+              ...mapJobSafe(job),
+              highlights: job.matchHighlights && job.matchHighlights.length > 0 
+                ? job.matchHighlights 
+                : (job.highlights || []),
+              // ✅ 保留所有 tags
+              skillsMustHave: job.skillsMustHave || [],
+              skillsNiceToHave: job.skillsNiceToHave || [],
+              workRights: job.workRights || null,
+              // ✅ 确保 jobUrl 和 url 都存在
+              jobUrl: job.jobUrl || job.url || '',
+              url: job.jobUrl || job.url || mapJobSafe(job).url,
+              // ✅ 保留 matchScore、subScores 和 summary（listSummary）
+              matchScore: job.matchScore,
+              subScores: job.subScores || null,
+              summary: job.summary || '',  // ✅ 包含 listSummary
+            }));
 
-              // Job Highlights (优先使用 matchHighlights，已包含数据库 fallback)
-              const highlights = job.matchHighlights && job.matchHighlights.length > 0
-                ? job.matchHighlights
-                : [];
-              
-              if (highlights.length > 0) {
-                parts.push(`\n**Job Highlights:**`);
-                highlights.forEach((h: string) => parts.push(`• ${h}`));
-              }
+            // ✅ 使用 buildMarkdownCards 生成卡片（复用已有逻辑）
+            const markdownCards = buildMarkdownCards(
+              { 
+                title: searchCriteria.jobTitle || 'Job Recommendations', 
+                city: searchCriteria.city || 'Australia' 
+              }, 
+              safeJobs, 
+              safeJobs.length
+            );
 
-              // Match Score
-              parts.push(`\n**Match Score: ${job.matchScore}%**`);
-              parts.push(`• Experience: ${job.subScores.experience}% | Skills: ${job.subScores.skills}% | Industry: ${job.subScores.industry}% | Other: ${job.subScores.other}%`);
-
-              // Must-Have Skills (如果有)
-              if (job.skillsMustHave && Array.isArray(job.skillsMustHave) && job.skillsMustHave.length > 0) {
-                parts.push(`\n**Must-Have Skills:**`);
-                job.skillsMustHave.slice(0, 5).forEach((skill: string) => parts.push(`• ${skill}`));
-              }
-
-              // Nice-to-Have Skills (如果有)
-              if (job.skillsNiceToHave && Array.isArray(job.skillsNiceToHave) && job.skillsNiceToHave.length > 0) {
-                parts.push(`\n**Nice-to-Have Skills:**`);
-                job.skillsNiceToHave.slice(0, 5).forEach((skill: string) => parts.push(`• ${skill}`));
-              }
-
-              // Work Rights (如果有)
-              if (job.workRights) {
-                const workRightsParts = [];
-                if (job.workRights.requiresStatus) {
-                  workRightsParts.push(`Requires: ${job.workRights.requiresStatus}`);
-                }
-                if (job.workRights.sponsorship && job.workRights.sponsorship !== 'unknown') {
-                  workRightsParts.push(`Sponsorship: ${job.workRights.sponsorship}`);
-                }
-                if (workRightsParts.length > 0) {
-                  parts.push(`\n**Work Rights:**`);
-                  workRightsParts.forEach((wr: string) => parts.push(`• ${wr}`));
-                }
-              }
-
-              // View Job Link (优先使用 jobUrl，否则使用 url)
-              const viewJobUrl = job.jobUrl || job.url;
-              parts.push(`\n🔗 [View Job](${viewJobUrl})`);
-              parts.push(`\n---`);
-
-              return parts.join('\n');
-            }).join('\n\n');
+            // ✅ 提取卡片内容（去掉 buildMarkdownCards 的头部和尾部）
+            const cardsContent = markdownCards
+              .split('\n')
+              .slice(1, -2)  // 去掉第一行 "Found X jobs..." 和最后两行（空行和 "Reply more"）
+              .join('\n');
 
             // 构建基础摘要
             let summary = `Found ${recommendedJobs.length} personalized job recommendations based on recent postings. ` +
@@ -3114,7 +3098,8 @@ export async function POST(request: NextRequest) {
               result: {
                 content: [{
                   type: "text",
-                  text: `# 🎯 Personalized Job Recommendations\n\n${summary}\n\n${recommendations}${feedback_prompt}`
+                  // ✅ 使用 buildMarkdownCards 生成的卡片内容（包含 matchScore、subScores、listSummary、highlights、tags、jobUrl）
+                  text: `# 🎯 Personalized Job Recommendations\n\n${summary}\n\n${cardsContent}${feedback_prompt}`
                 }],
                 isError: false,
                 mode: "recommend",
