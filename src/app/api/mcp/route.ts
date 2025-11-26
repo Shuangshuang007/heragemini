@@ -336,7 +336,7 @@ function buildMarkdownCards(q: { title: string; city: string }, jobs: any[], tot
     // Apply 链接（统一文案）
     if (url) {
       parts.push(''); // 空行
-      parts.push(`   👉 [Apply via Corporate Site (matched by Héra AI) ↗](${url})`);
+      parts.push(`   👉 [Apply on the official website via Héra AI](${url})`);
     }
 
     return parts.join('\n');
@@ -2942,7 +2942,7 @@ export async function POST(request: NextRequest) {
                           : [],
                     summary: matchData.listSummary || job.summary || `${job.title} position at ${job.company}`,
                     detailedSummary: matchData.detailedSummary || job.detailedSummary || job.description?.substring(0, 200) + '...',
-                    keyRequirements: matchData.keyRequirements || [],
+                    // ✅ GPT 不返回 keyRequirements（永远是空数组），不覆盖，让 ...job 中的原始值保留
                     userType: matchData.userType || 'neutral'
                   };
                 } catch (error) {
