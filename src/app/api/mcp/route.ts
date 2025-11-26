@@ -233,7 +233,7 @@ function buildMarkdownCards(q: { title: string; city: string }, jobs: any[], tot
     const title = (j.title || "").replace(/[–—]/g, "-").trim();
     const company = (j.company || "").trim();
     const loc = (j.location || "").trim();
-    // 优先使用 jobUrl，否则使用 url
+    // ✅ 直接从 safeJobs 中提取 jobUrl 或 url（safeJobs 中已经处理好了）
     const url = j.jobUrl || j.url || "";
     const matchScore = typeof j.matchScore === 'number' ? `${j.matchScore}%` : null;
     const subScores = j.subScores || {};
@@ -333,11 +333,9 @@ function buildMarkdownCards(q: { title: string; city: string }, jobs: any[], tot
 
     // ✅ 移除 jobUrl 文本显示（不显示原始 URL）
 
-    // Apply 链接（统一文案）
-    if (url) {
-      parts.push(''); // 空行
-      parts.push(`   👉 [Apply on the official website via Héra AI](${url})`);
-    }
+    // ✅ Apply 链接（统一文案）- 硬性要求：每个职位都必须有 Apply 链接
+    parts.push(''); // 空行
+    parts.push(`   👉 [Apply on the official website via Héra AI](${url})`);
 
     return parts.join('\n');
   });
@@ -2997,9 +2995,9 @@ export async function POST(request: NextRequest) {
               skillsNiceToHave: job.skillsNiceToHave || [],
               keyRequirements: job.keyRequirements || [],  // ✅ 新增
               workRights: job.workRights || null,
-              // ✅ 确保 jobUrl 和 url 都存在
-              jobUrl: job.jobUrl || job.url || '',
-              url: job.jobUrl || job.url || mapJobSafe(job).url,
+              // ✅ 只从 job 对象提取 jobUrl 和 url，不要 fallback（职位一定有 jobUrl）
+              jobUrl: job.jobUrl || job.url,
+              url: job.jobUrl || job.url,
               // ✅ 保留 matchScore、subScores 和 summary（listSummary）
               matchScore: job.matchScore,
               subScores: job.subScores || null,
