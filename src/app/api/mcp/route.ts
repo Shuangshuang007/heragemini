@@ -245,18 +245,34 @@ function buildMarkdownCards(q: { title: string; city: string }, jobs: any[], tot
     ];
 
     if (matchScore) {
-      const subScoreText = [
-        subScores.experience ? `Experience: ${subScores.experience}%` : null,
-        subScores.skills ? `Skills: ${subScores.skills}%` : null,
-        subScores.industry ? `Industry: ${subScores.industry}%` : null,
-        subScores.other ? `Other: ${subScores.other}%` : null,
-      ].filter(Boolean).join(' | ');
-      parts.push('');
-      parts.push(`   **Match Score:** ${matchScore}${subScoreText ? ` (${subScoreText})` : ''}`);
-      // ✅ 显示 listSummary（如果有）
-      if (j.summary && typeof j.summary === 'string' && j.summary.trim()) {
+      // 检查 subScores 是否有至少一个字段有数值
+      const hasSubScores = subScores && (
+        (typeof subScores.experience === 'number' && subScores.experience > 0) ||
+        (typeof subScores.skills === 'number' && subScores.skills > 0) ||
+        (typeof subScores.industry === 'number' && subScores.industry > 0) ||
+        (typeof subScores.other === 'number' && subScores.other > 0)
+      );
+      
+      if (hasSubScores) {
+        // 有 subScores：显示详细格式
+        const subScoreText = [
+          subScores.experience ? `Experience: ${subScores.experience}%` : null,
+          subScores.skills ? `Skills: ${subScores.skills}%` : null,
+          subScores.industry ? `Industry: ${subScores.industry}%` : null,
+          subScores.other ? `Other: ${subScores.other}%` : null,
+        ].filter(Boolean).join(', ');
+        
+        // 如果有 listSummary，在括号里简短展示（截取前50字符）
+        const summaryText = j.summary && typeof j.summary === 'string' && j.summary.trim()
+          ? ` - ${j.summary.trim().substring(0, 50)}${j.summary.trim().length > 50 ? '...' : ''}`
+          : '';
+        
         parts.push('');
-        parts.push(`   ${j.summary.trim()}`);
+        parts.push(`   **Match:** ${matchScore} (${subScoreText}${summaryText})`);
+      } else {
+        // 没有 subScores：只显示 matchScore
+        parts.push('');
+        parts.push(`   **Match:** ${matchScore}`);
       }
     }
 
@@ -267,6 +283,15 @@ function buildMarkdownCards(q: { title: string; city: string }, jobs: any[], tot
       parts.push('   **Job Highlights:**');
       highlights.slice(0, 3).forEach((h: string) => {
         parts.push(`   • ${h}`);
+      });
+    }
+
+    // ✅ Key Requirements 显示（如果有）
+    if (j.keyRequirements && Array.isArray(j.keyRequirements) && j.keyRequirements.length > 0) {
+      parts.push(''); // 空行
+      parts.push('   **Key Requirements:**');
+      j.keyRequirements.slice(0, 5).forEach((req: string) => {
+        parts.push(`   • ${req}`);
       });
     }
 
@@ -306,16 +331,12 @@ function buildMarkdownCards(q: { title: string; city: string }, jobs: any[], tot
       }
     }
 
-    // 若存在 jobUrl，增加一行说明
-    if (j.jobUrl && j.jobUrl !== url) {
-      parts.push('');
-      parts.push(`   **Job URL:** ${j.jobUrl}`);
-    }
+    // ✅ 移除 jobUrl 文本显示（不显示原始 URL）
 
-    // View Details链接
+    // Apply 链接（统一文案）
     if (url) {
       parts.push(''); // 空行
-      parts.push(`   [View Details](${url})`);
+      parts.push(`   👉 [Apply via Corporate Site (matched by Héra AI) ↗](${url})`);
     }
 
     return parts.join('\n');
@@ -2974,6 +2995,7 @@ export async function POST(request: NextRequest) {
               // ✅ 保留所有 tags
               skillsMustHave: job.skillsMustHave || [],
               skillsNiceToHave: job.skillsNiceToHave || [],
+              keyRequirements: job.keyRequirements || [],  // ✅ 新增
               workRights: job.workRights || null,
               // ✅ 确保 jobUrl 和 url 都存在
               jobUrl: job.jobUrl || job.url || '',
@@ -2994,10 +3016,10 @@ export async function POST(request: NextRequest) {
               safeJobs.length
             );
 
-            // ✅ 提取卡片内容（去掉 buildMarkdownCards 的头部和尾部）
+            // ✅ 提取卡片内容（去掉 buildMarkdownCards 的头部）
             const cardsContent = markdownCards
               .split('\n')
-              .slice(1, -2)  // 去掉第一行 "Found X jobs..." 和最后两行（空行和 "Reply more"）
+              .slice(1)  // 只去掉第一行 "Found X jobs..."，保留所有卡片内容和尾部
               .join('\n');
 
             // 构建基础摘要
