@@ -1,0 +1,203 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "HeraAI MCP Gateway",
+    "version": "1.0.0",
+    "description": "Single endpoint Gateway for ChatGPT GPTs Actions. Call any HeraAI MCP tool through this unified interface.",
+    "contact": {
+      "name": "HeraAI Support",
+      "url": "https://heraai.net.au"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://heraai.net.au/api/gateway",
+      "description": "Production server"
+    }
+  ],
+  "paths": {
+    "/mcp": {
+      "post": {
+        "operationId": "call_mcp_tool",
+        "summary": "Call any HeraAI MCP tool",
+        "description": "Call any of the 11 available MCP tools by specifying the tool name and arguments. This is a unified gateway endpoint that routes to the appropriate MCP tool handler.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tool"],
+                "properties": {
+                  "tool": {
+                    "type": "string",
+                    "enum": [
+                      "recommend_jobs",
+                      "search_jobs",
+                      "search_jobs_by_company",
+                      "refine_recommendations",
+                      "job_alert",
+                      "tailor_resume",
+                      "build_search_links",
+                      "get_user_applications",
+                      "career_transition_advice",
+                      "career_path_explorer",
+                      "career_skill_gap_analysis"
+                    ],
+                    "description": "The name of the MCP tool to call. Available tools:\n- recommend_jobs: Get personalized job recommendations\n- search_jobs: Search for jobs by title and location\n- search_jobs_by_company: Search for jobs at a specific company\n- refine_recommendations: Get more jobs based on previous recommendations and feedback\n- job_alert: Send fresh job alerts based on last search\n- tailor_resume: Optimize or tailor resume for a job\n- build_search_links: Generate direct search URLs for job platforms\n- get_user_applications: Retrieve user job application history\n- career_transition_advice: Get personalized career switch recommendations\n- career_path_explorer: Explore all possible career paths from a job title\n- career_skill_gap_analysis: Analyze skill gap between two job roles"
+                  },
+                  "arguments": {
+                    "type": "object",
+                    "description": "Tool-specific arguments. The structure depends on which tool is being called. Refer to MCP tool documentation for specific argument schemas.",
+                    "additionalProperties": true
+                  }
+                }
+              },
+              "examples": {
+                "recommend_jobs": {
+                  "summary": "Recommend jobs example",
+                  "value": {
+                    "tool": "recommend_jobs",
+                    "arguments": {
+                      "user_profile": {
+                        "skills": ["React", "TypeScript"],
+                        "city": "Melbourne",
+                        "jobTitles": ["Software Engineer"]
+                      },
+                      "limit": 10
+                    }
+                  }
+                },
+                "search_jobs": {
+                  "summary": "Search jobs example",
+                  "value": {
+                    "tool": "search_jobs",
+                    "arguments": {
+                      "job_title": "software engineer",
+                      "city": "Sydney"
+                    }
+                  }
+                },
+                "search_jobs_by_company": {
+                  "summary": "Search jobs by company example",
+                  "value": {
+                    "tool": "search_jobs_by_company",
+                    "arguments": {
+                      "company": "Google",
+                      "city": "Sydney"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful tool execution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "description": "Whether the tool call was successful"
+                    },
+                    "tool": {
+                      "type": "string",
+                      "description": "The tool that was called"
+                    },
+                    "result": {
+                      "type": "object",
+                      "description": "Tool execution result. The structure varies by tool.",
+                      "additionalProperties": true
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "elapsed": {
+                          "type": "string",
+                          "description": "Request processing time"
+                        },
+                        "mcpRequestId": {
+                          "type": "string",
+                          "description": "Internal MCP request ID"
+                        }
+                      }
+                    }
+                  },
+                  "required": ["success", "tool"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid tool name or arguments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error message"
+                    },
+                    "tool": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "result": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": false
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error message"
+                    },
+                    "tool": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "result": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ToolResult": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Tool-specific result structure. Format varies by tool."
+      }
+    }
+  }
+}
+
