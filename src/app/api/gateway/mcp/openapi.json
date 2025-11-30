@@ -194,8 +194,7 @@
     "schemas": {
       "ToolResult": {
         "type": "object",
-        "additionalProperties": true,
-        "description": "Tool-specific result structure. Format varies by tool."
+        "properties": {}
       }
     }
   }
