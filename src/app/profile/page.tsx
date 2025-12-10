@@ -3080,8 +3080,9 @@ export default function ProfilePage() {
                                   }`}
                                   disabled={!selectedCountry}
                                   onChange={(e) => {
-                                    setValue(`otherWorkingRights.${index}.workingRights`, e.target.value);
-                                    const status = getWorkingRightsStatus(selectedCountry, e.target.value);
+                                    const value = e.target.value || '';
+                                    setValue(`otherWorkingRights.${index}.workingRights`, value);
+                                    const status = getWorkingRightsStatus(selectedCountry, value);
                                     if (status) {
                                       setValue(`otherWorkingRights.${index}.status`, status);
                                     }
