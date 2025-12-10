@@ -34,7 +34,7 @@ export interface PersonalInfo {
   otherWorkingRights?: Array<{
     country: string;              // 国家名称
     workingRights: string;        // Work Rights label
-    status: string;               // Work Rights status
+    status?: string;              // Work Rights status（可选）
     visaType?: string;            // 签证类型（可选）
   }>;
   // 新增字段

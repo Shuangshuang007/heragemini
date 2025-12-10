@@ -2146,7 +2146,11 @@ export default function ProfilePage() {
         workingRights: value.workingRights || value.workingRightsAU || value.workingRightsOther || '',
         workingRightsStatus: value.workingRightsStatus || (value.workingRights && value.country ? getWorkingRightsStatus(value.country, value.workingRights) : undefined),
         workingRightsVisaType: value.workingRightsVisaType || '',
-        otherWorkingRights: value.otherWorkingRights || [],
+        otherWorkingRights: value.otherWorkingRights?.filter((item): item is { country: string; workingRights: string; status?: string; visaType?: string } =>
+          item !== undefined &&
+          typeof item.country === 'string' &&
+          typeof item.workingRights === 'string'
+        ) || [],
         // 新增字段
         education: value.education?.filter((edu): edu is { startDate: string; endDate: string; degree: string; school: string; field?: string; location?: string } => 
           edu !== undefined && 
