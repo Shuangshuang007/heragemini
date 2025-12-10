@@ -2956,15 +2956,18 @@ export default function ProfilePage() {
                                   required
                                   disabled={!selectedCountry}
                                   onChange={(e) => {
-                                    setValue('workingRights', e.target.value);
+                                    const value = e.target.value || '';
+                                    setValue('workingRights', value);
                                     // 同时更新 status
-                                    const status = getWorkingRightsStatus(selectedCountry, e.target.value);
-                                    if (status) {
-                                      setValue('workingRightsStatus', status);
-                                    }
-                                    // 如果是 Australia，同时更新旧字段（向后兼容）
-                                    if (selectedCountry === 'Australia') {
-                                      setValue('workingRightsAU', e.target.value);
+                                    if (selectedCountry) {
+                                      const status = getWorkingRightsStatus(selectedCountry, value);
+                                      if (status) {
+                                        setValue('workingRightsStatus', status);
+                                      }
+                                      // 如果是 Australia，同时更新旧字段（向后兼容）
+                                      if (selectedCountry === 'Australia') {
+                                        setValue('workingRightsAU', value);
+                                      }
                                     }
                                   }}
                                 >
@@ -3082,9 +3085,11 @@ export default function ProfilePage() {
                                   onChange={(e) => {
                                     const value = e.target.value || '';
                                     setValue(`otherWorkingRights.${index}.workingRights`, value);
-                                    const status = getWorkingRightsStatus(selectedCountry, value);
-                                    if (status) {
-                                      setValue(`otherWorkingRights.${index}.status`, status);
+                                    if (selectedCountry) {
+                                      const status = getWorkingRightsStatus(selectedCountry, value);
+                                      if (status) {
+                                        setValue(`otherWorkingRights.${index}.status`, status);
+                                      }
                                     }
                                   }}
                                 >
