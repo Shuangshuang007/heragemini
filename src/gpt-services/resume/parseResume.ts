@@ -107,7 +107,15 @@ Please extract information from the following resume in the following format (mu
   "jobTitles": [],
   "skills": [],
   "seniority": "entry|mid|senior|executive",
-  "workingRights": "Australian Citizen|Australian Permanent Resident|Temporary Work Visa (with full work rights)|Student Visa (limited work rights)|No work rights in Australia",
+  "workingRights": "Working rights text (e.g. 'Australian Citizen', 'US Permanent Resident (Green Card)', 'Singapore Permanent Resident', etc.)",
+  "otherWorkingRights": [
+    {
+      "country": "Country name",
+      "workingRights": "Working rights text",
+      "status": "CITIZEN|PR|OPEN_WORK_VISA|EMPLOYER_SPONSORED|STUDENT_LIMITED|DEPENDENT_WITH_WORK_RIGHTS|NO_RIGHT|OTHER",
+      "visaType": "Optional visa type (e.g. '482', 'H1B', 'EP')"
+    }
+  ],
   "languages": [
     {
       "language": "",
@@ -209,10 +217,14 @@ Notes:
 - **Fallback**: If no clear indicators, leave country as empty string
 
 **Working Rights Logic:**
-- Choose from: "Australian Citizen", "Australian Permanent Resident", "Temporary Work Visa (with full work rights)", "Student Visa (limited work rights)", "No work rights in Australia"
-- If person has work experience in Australia or studied in Australia, default to "Australian Citizen"
-- If person has education outside Australia but works in Australia, default to "Australian Permanent Resident"
-- Avoid "No work rights in Australia" unless clearly indicated
+- Extract working rights for the primary country (based on country inference)
+- For primary country, use standard format: "Country Name + Status" (e.g. "Australian Citizen", "US Permanent Resident (Green Card)")
+- If person has multiple countries' work rights mentioned in resume, add them to "otherWorkingRights" array
+- For each work right, try to infer:
+  * status: CITIZEN, PR, OPEN_WORK_VISA, EMPLOYER_SPONSORED, STUDENT_LIMITED, DEPENDENT_WITH_WORK_RIGHTS, NO_RIGHT, or OTHER
+  * visaType: Extract specific visa type if mentioned (e.g. "482", "H1B", "EP")
+- If person has work experience in a country or studied there, likely has work rights in that country
+- If visa type is mentioned (e.g. "H1B visa", "482 visa"), extract it to visaType field
 
 **Seniority Inference Logic:**
 - entry: 0-3 years experience, junior positions

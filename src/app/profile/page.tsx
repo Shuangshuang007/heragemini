@@ -38,6 +38,7 @@ import Link from 'next/link';
 import ResumeUploadTip from '@/components/ResumeUploadTip';
 import { useSession } from 'next-auth/react';
 import { PaymentModal } from '@/components/PaymentModal';
+import { getWorkingRightsOptions, getWorkingRightsStatus, type WorkingRightsOption } from '@/constants/workRights';
 
 const profileSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
@@ -84,8 +85,20 @@ const profileSchema = z.object({
   skills: z.array(z.object({
     name: z.string()
   })).optional(),
-  workingRightsAU: z.string().min(1, 'Australia Working Rights is required'),
+  // 工作权限字段（保留旧字段用于向后兼容）
+  workingRightsAU: z.string().optional(),
   workingRightsOther: z.string().optional(),
+  // 新字段（多国家支持）
+  workingRights: z.string().min(1, 'Working Rights is required'),
+  workingRightsStatus: z.string().optional(),
+  workingRightsVisaType: z.string().optional(),
+  // 其他国家的 Work Rights（数组）
+  otherWorkingRights: z.array(z.object({
+    country: z.string().min(1, 'Country is required'),
+    workingRights: z.string().min(1, 'Working Rights is required'),
+    status: z.string().optional(),
+    visaType: z.string().optional(),
+  })).optional(),
   languages: z.array(z.object({
     language: z.string().min(1, 'Language is required'),
     level: z.enum(['Native', 'Fluent', 'Conversational', 'Basic'])
@@ -617,6 +630,56 @@ export default function ProfilePage() {
     name: "languages"
   });
 
+  const { fields: otherWorkingRightsFields, append: appendOtherWorkingRights, remove: removeOtherWorkingRights } = useFieldArray({
+    control,
+    name: "otherWorkingRights"
+  });
+
+  // 转换函数：将新格式转换为旧格式（供 PDF 使用，不修改 PDF 代码）
+  const convertWorkingRightsToLegacy = useCallback((
+    country: string,
+    workingRights?: string,
+    workingRightsVisaType?: string,
+    otherWorkingRights?: Array<{
+      country: string;
+      workingRights: string;
+      visaType?: string;
+    }>
+  ): { workingRightsAU: string; workingRightsOther: string } => {
+    let workingRightsAU = '';
+    let workingRightsOther = '';
+    
+    // 1. 处理主国家的 work rights（基于 profile country）
+    if (workingRights) {
+      const mainWorkRights = workingRightsVisaType 
+        ? `${workingRights} (${workingRightsVisaType})`
+        : workingRights;
+      
+      if (country === 'Australia') {
+        workingRightsAU = mainWorkRights;
+      } else {
+        workingRightsOther = mainWorkRights;
+      }
+    }
+    
+    // 2. 处理其他国家的 work rights 数组
+    if (otherWorkingRights && otherWorkingRights.length > 0) {
+      const otherRightsList = otherWorkingRights.map(item => {
+        const visaInfo = item.visaType ? ` (${item.visaType})` : '';
+        return `${item.country}: ${item.workingRights}${visaInfo}`;
+      });
+      
+      // 合并到 workingRightsOther
+      if (workingRightsOther) {
+        workingRightsOther += ', ' + otherRightsList.join(', ');
+      } else {
+        workingRightsOther = otherRightsList.join(', ');
+      }
+    }
+    
+    return { workingRightsAU, workingRightsOther };
+  }, []);
+
   // Others (flexible sections)
   const { fields: othersFields, append: appendOther, remove: removeOther, move: moveOther } = useFieldArray({
     control,
@@ -905,6 +968,16 @@ export default function ProfilePage() {
         // 处理工作权限
         if (parsedData.workingRights) {
           const workingRights = parsedData.workingRights;
+          const country = watch('country') || parsedData.country || 'Australia';
+          
+          // 设置新字段
+          setValue('workingRights', workingRights);
+          const status = getWorkingRightsStatus(country, workingRights);
+          if (status) {
+            setValue('workingRightsStatus', status);
+          }
+          
+          // 向后兼容：同时设置旧字段
           const australiaOptions = [
             'Australian Citizen',
             'Australian Permanent Resident', 
@@ -920,6 +993,21 @@ export default function ProfilePage() {
             setValue('workingRightsOther', workingRights);
             appendToTerminal(`✓ Set other country working rights: ${workingRights}`);
           }
+        }
+
+        // 处理其他国家的 work rights
+        if (parsedData.otherWorkingRights && Array.isArray(parsedData.otherWorkingRights)) {
+          parsedData.otherWorkingRights.forEach((item: any) => {
+            if (item.country && item.workingRights) {
+              appendOtherWorkingRights({
+                country: item.country,
+                workingRights: item.workingRights,
+                status: item.status || '',
+                visaType: item.visaType || ''
+              });
+              appendToTerminal(`✓ Added working rights for ${item.country}: ${item.workingRights}`);
+            }
+          });
         }
 
         // 处理语言技能
@@ -1583,6 +1671,15 @@ export default function ProfilePage() {
       
       const smartFilename = `${firstName} ${lastName}_Resume_${cleanJobTitle}_v1_${year}${month}${day}`;
       
+      // 执行转换：将新格式转换为旧格式（供 PDF 使用）
+      const { workingRightsAU: legacyAU, workingRightsOther: legacyOther } = 
+        convertWorkingRightsToLegacy(
+          formData.country,
+          formData.workingRights,
+          formData.workingRightsVisaType,
+          formData.otherWorkingRights
+        );
+      
       // 转换数据格式以匹配ResumePDF组件的要求
       const resumeData = {
         profile: {
@@ -1633,8 +1730,14 @@ export default function ProfilePage() {
             return 'Unknown Language';
           }
         }),
-        workingRightsAU: formData.workingRightsAU || '',
-        workingRightsOther: formData.workingRightsOther || '',
+        // 工作权限字段（向后兼容 - PDF 使用这些字段，通过转换函数生成）
+        workingRightsAU: legacyAU || formData.workingRightsAU || '',
+        workingRightsOther: legacyOther || formData.workingRightsOther || '',
+        // 新字段（也保存，供未来使用）
+        workingRights: formData.workingRights || formData.workingRightsAU || formData.workingRightsOther || '',
+        workingRightsStatus: formData.workingRightsStatus || (formData.workingRights && formData.country ? getWorkingRightsStatus(formData.country, formData.workingRights) : undefined),
+        workingRightsVisaType: formData.workingRightsVisaType || '',
+        otherWorkingRights: formData.otherWorkingRights || [],
         // 添加智能文件名
         smartFilename: smartFilename
       };
@@ -1729,9 +1832,25 @@ export default function ProfilePage() {
       website: formData.website || '',
       video: formData.video || '',
       about: formData.about || '',
-      // 工作权限字段
-      workingRightsAU: formData.workingRightsAU || '',
-      workingRightsOther: formData.workingRightsOther || '',
+      // 工作权限字段：使用转换函数生成旧格式（向后兼容）
+      ...(() => {
+        const { workingRightsAU: legacyAU, workingRightsOther: legacyOther } = 
+          convertWorkingRightsToLegacy(
+            formData.country,
+            formData.workingRights,
+            formData.workingRightsVisaType,
+            formData.otherWorkingRights
+          );
+        return {
+          workingRightsAU: legacyAU || formData.workingRightsAU || '',
+          workingRightsOther: legacyOther || formData.workingRightsOther || '',
+        };
+      })(),
+      // 新字段（也保存，供未来使用）
+      workingRights: formData.workingRights || formData.workingRightsAU || formData.workingRightsOther || '',
+      workingRightsStatus: formData.workingRightsStatus || (formData.workingRights && formData.country ? getWorkingRightsStatus(formData.country, formData.workingRights) : undefined),
+      workingRightsVisaType: formData.workingRightsVisaType || '',
+      otherWorkingRights: formData.otherWorkingRights || [],
       // 确保这些字段被包含
       education: formData.education || [],
       employment: formData.employment || [],
@@ -1806,6 +1925,13 @@ export default function ProfilePage() {
           onChange={(e) => {
             setValue('country', e.target.value);
             setValue('city', ''); // 重置城市
+            // 重置工作权限（因为不同国家选项不同）
+            setValue('workingRights', '');
+            setValue('workingRightsStatus', '');
+            setValue('workingRightsVisaType', '');
+            // 向后兼容：也重置旧字段
+            setValue('workingRightsAU', '');
+            setValue('workingRightsOther', '');
           }}
         />
       </div>
@@ -1914,6 +2040,23 @@ export default function ProfilePage() {
       if (profile.careerPriorities && Array.isArray(profile.careerPriorities)) {
         setValue('careerPriorities', profile.careerPriorities);
       }
+      if (profile.otherWorkingRights && Array.isArray(profile.otherWorkingRights)) {
+        // 清空现有字段，然后添加解析出的数据
+        const currentCount = otherWorkingRightsFields.length;
+        for (let i = 0; i < currentCount; i++) {
+          removeOtherWorkingRights(0);
+        }
+        profile.otherWorkingRights.forEach((item: any) => {
+          if (item.country && item.workingRights) {
+            appendOtherWorkingRights({
+              country: item.country || '',
+              workingRights: item.workingRights || '',
+              status: item.status || '',
+              visaType: item.visaType || ''
+            });
+          }
+        });
+      }
     }
   }, []);
 
@@ -1996,8 +2139,14 @@ export default function ProfilePage() {
         video: value.video || '',
         about: value.about || '',
         // 工作权限字段
+        // 工作权限字段（向后兼容）
         workingRightsAU: value.workingRightsAU || '',
         workingRightsOther: value.workingRightsOther || '',
+        // 新字段（从旧字段迁移）
+        workingRights: value.workingRights || value.workingRightsAU || value.workingRightsOther || '',
+        workingRightsStatus: value.workingRightsStatus || (value.workingRights && value.country ? getWorkingRightsStatus(value.country, value.workingRights) : undefined),
+        workingRightsVisaType: value.workingRightsVisaType || '',
+        otherWorkingRights: value.otherWorkingRights || [],
         // 新增字段
         education: value.education?.filter((edu): edu is { startDate: string; endDate: string; degree: string; school: string; field?: string; location?: string } => 
           edu !== undefined && 
@@ -2778,32 +2927,206 @@ export default function ProfilePage() {
 
                     <div className="mt-6">
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">Working Rights</h3>
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div className="w-full">
-                          <label className="block text-sm font-medium text-muted-foreground mb-1">
-                            Australia Working Rights<span className="text-red-500 ml-1">*</span>
+                      
+                      {/* 主国家的 Work Rights */}
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mb-6">
+                        {(() => {
+                          const selectedCountry = watch('country');
+                          const options = selectedCountry ? getWorkingRightsOptions(selectedCountry) : [];
+                          const selectedWorkingRights = watch('workingRights');
+                          const selectedOption = options.find(opt => opt.label === selectedWorkingRights);
+                          const showVisaType = selectedOption?.supportsVisaType;
+                          
+                          return (
+                            <>
+                              {/* 左侧：Work Rights 下拉 */}
+                              <div className="w-full">
+                                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                                  {selectedCountry || 'Country'} Working Rights<span className="text-red-500 ml-1">*</span>
+                                </label>
+                                <select
+                                  {...register('workingRights')}
+                                  className={`w-full h-10 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                    errors.workingRights ? 'border-red-500' : 'border-gray-300'
+                                  }`}
+                                  required
+                                  disabled={!selectedCountry}
+                                  onChange={(e) => {
+                                    setValue('workingRights', e.target.value);
+                                    // 同时更新 status
+                                    const status = getWorkingRightsStatus(selectedCountry, e.target.value);
+                                    if (status) {
+                                      setValue('workingRightsStatus', status);
+                                    }
+                                    // 如果是 Australia，同时更新旧字段（向后兼容）
+                                    if (selectedCountry === 'Australia') {
+                                      setValue('workingRightsAU', e.target.value);
+                                    }
+                                  }}
+                                >
+                                  <option value="" style={{ color: '#6b7280' }}>
+                                    {selectedCountry ? 'Please select' : 'Please select a country first'}
+                                  </option>
+                                  {options.map((option) => (
+                                    <option key={option.status} value={option.label}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                {errors.workingRights && (
+                                  <p className="mt-1 text-sm text-red-500">{errors.workingRights.message}</p>
+                                )}
+                              </div>
+
+                              {/* 右侧：Visa Type（条件显示） */}
+                              {showVisaType ? (
+                                <div className="w-full">
+                                  <Input
+                                    label="Visa Type (Optional)"
+                                    {...register('workingRightsVisaType')}
+                                    error={errors.workingRightsVisaType?.message}
+                                    placeholder={
+                                      selectedOption?.visaExamples 
+                                        ? `e.g. ${selectedOption.visaExamples.join(', ')}`
+                                        : 'e.g. Work Permit, Visa Type'
+                                    }
+                                  />
+                                </div>
+                              ) : (
+                                <div className="w-full"></div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Other Countries Working Rights */}
+                      <div className="mt-4">
+                        <div className="flex justify-between items-center mb-4">
+                          <label className="block text-sm font-medium text-muted-foreground">
+                            Other Countries Working Rights
                           </label>
-                          <select
-                            {...register('workingRightsAU')}
-                            className={`w-full h-10 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                              errors.workingRightsAU ? 'border-red-500' : 'border-gray-300'
-                            }`}
-                            required
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            size="sm"
+                            className="h-8 px-3 text-sm font-normal text-gray-500 hover:text-gray-700"
+                            onClick={() => appendOtherWorkingRights({ 
+                              country: '', 
+                              workingRights: '', 
+                              status: '',
+                              visaType: '' 
+                            })}
                           >
-                            <option value="" style={{ color: '#6b7280' }}>Please select</option>
-                            <option value="Australian Citizen">Australian Citizen</option>
-                            <option value="Australian Permanent Resident">Australian Permanent Resident</option>
-                            <option value="Temporary Work Visa (with full work rights)">Temporary Work Visa (with full work rights)</option>
-                            <option value="Student Visa (limited work rights)">Student Visa (limited work rights)</option>
-                            <option value="No work rights in Australia">No work rights in Australia</option>
-                          </select>
-                          {errors.workingRightsAU && <p className="mt-1 text-sm text-red-500">{errors.workingRightsAU.message}</p>}
+                            + Add
+                          </Button>
                         </div>
-                        <Input
-                          label="Other Country Working Rights"
-                          {...register('workingRightsOther')}
-                          error={errors.workingRightsOther?.message}
-                        />
+                      {otherWorkingRightsFields.map((field, index) => {
+                        const selectedCountry = watch(`otherWorkingRights.${index}.country`);
+                        const options = selectedCountry ? getWorkingRightsOptions(selectedCountry) : [];
+                        const selectedWorkingRights = watch(`otherWorkingRights.${index}.workingRights`);
+                        const selectedOption = options.find(opt => opt.label === selectedWorkingRights);
+                        const showVisaType = selectedOption?.supportsVisaType;
+                        const profileCountry = watch('country');
+                        
+                        return (
+                          <div key={field.id} className="mb-4 p-4 border rounded-lg">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                              {/* 第一列：Country */}
+                              <div className="w-full">
+                                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                                  Country<span className="text-red-500 ml-1">*</span>
+                                </label>
+                                <select
+                                  {...register(`otherWorkingRights.${index}.country`)}
+                                  className={`w-full h-10 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                    errors.otherWorkingRights?.[index]?.country ? 'border-red-500' : 'border-gray-300'
+                                  }`}
+                                  onChange={(e) => {
+                                    setValue(`otherWorkingRights.${index}.country`, e.target.value);
+                                    // 重置 work rights
+                                    setValue(`otherWorkingRights.${index}.workingRights`, '');
+                                    setValue(`otherWorkingRights.${index}.status`, '');
+                                    setValue(`otherWorkingRights.${index}.visaType`, '');
+                                  }}
+                                >
+                                  <option value="">Please select</option>
+                                  {Object.keys(cityOptionsMap)
+                                    .filter(country => country !== profileCountry) // 排除 profile country
+                                    .map(country => (
+                                      <option key={country} value={country}>{country}</option>
+                                    ))}
+                                </select>
+                                {errors.otherWorkingRights?.[index]?.country && (
+                                  <p className="mt-1 text-sm text-red-500">
+                                    {errors.otherWorkingRights[index].country?.message}
+                                  </p>
+                                )}
+                              </div>
+                              
+                              {/* 第二列：Work Rights */}
+                              <div className="w-full">
+                                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                                  Work Rights<span className="text-red-500 ml-1">*</span>
+                                </label>
+                                <select
+                                  {...register(`otherWorkingRights.${index}.workingRights`)}
+                                  className={`w-full h-10 px-3 py-2 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                                    errors.otherWorkingRights?.[index]?.workingRights ? 'border-red-500' : 'border-gray-300'
+                                  }`}
+                                  disabled={!selectedCountry}
+                                  onChange={(e) => {
+                                    setValue(`otherWorkingRights.${index}.workingRights`, e.target.value);
+                                    const status = getWorkingRightsStatus(selectedCountry, e.target.value);
+                                    if (status) {
+                                      setValue(`otherWorkingRights.${index}.status`, status);
+                                    }
+                                  }}
+                                >
+                                  <option value="">Please select</option>
+                                  {options.map((option) => (
+                                    <option key={option.status} value={option.label}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                {errors.otherWorkingRights?.[index]?.workingRights && (
+                                  <p className="mt-1 text-sm text-red-500">
+                                    {errors.otherWorkingRights[index].workingRights?.message}
+                                  </p>
+                                )}
+                              </div>
+                              
+                              {/* 第三列：Visa Type（条件显示） */}
+                              <div className="w-full">
+                                {showVisaType ? (
+                                  <Input
+                                    label="Visa Type (Optional)"
+                                    {...register(`otherWorkingRights.${index}.visaType`)}
+                                    error={errors.otherWorkingRights?.[index]?.visaType?.message}
+                                    placeholder={
+                                      selectedOption?.visaExamples 
+                                        ? `e.g. ${selectedOption.visaExamples.join(', ')}`
+                                        : 'e.g. Work Permit, Visa Type'
+                                    }
+                                  />
+                                ) : (
+                                  <div className="h-10"></div>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-2 h-8 px-3 text-red-500 hover:text-red-700"
+                              onClick={() => removeOtherWorkingRights(index)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        );
+                      })}
                       </div>
                     </div>
 
