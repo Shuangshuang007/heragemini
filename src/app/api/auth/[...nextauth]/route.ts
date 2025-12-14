@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import GitHubProvider from "next-auth/providers/github";
 import LinkedInProvider from "next-auth/providers/linkedin";
+import { NextRequest } from "next/server";
 
 // 判断是否为 heraai.one 域名（包括 www.heraai.one）
 const isOneHost = (host?: string | null): boolean => {
@@ -9,8 +10,8 @@ const isOneHost = (host?: string | null): boolean => {
   return host.toLowerCase().includes("heraai.one");
 };
 
-// 将 NextAuth 改为函数形式，根据域名动态选择 GitHub OAuth 凭证
-export const { handlers, auth } = NextAuth((req) => {
+// 创建 NextAuth handler，在运行时根据请求动态选择 GitHub OAuth 凭证
+const handler = async (req: NextRequest, context: any) => {
   // 从 request headers 获取 host
   const host = req.headers.get("host") || req.headers.get("x-forwarded-host");
   
@@ -23,7 +24,8 @@ export const { handlers, auth } = NextAuth((req) => {
     ? process.env.GITHUB_CLIENT_SECRET_ONE!
     : process.env.GITHUB_CLIENT_SECRET!;
 
-  return {
+  // 动态创建 NextAuth 配置
+  const authOptions = {
     debug: true, // 调试期先开着
     providers: [
       LinkedInProvider({
@@ -65,18 +67,18 @@ export const { handlers, auth } = NextAuth((req) => {
       }),
     ],
     callbacks: {
-      async signIn({ user, account, profile }) {
+      async signIn({ user, account, profile }: any) {
         // 可在此同步用户信息到数据库
         return true;
       },
-      async jwt({ token, user, account }) {
+      async jwt({ token, user, account }: any) {
         // 将用户邮箱添加到token中
         if (user?.email) {
           token.registeredEmail = user.email;
         }
         return token;
       },
-      async session({ session, token, user }) {
+      async session({ session, token, user }: any) {
         // 将registeredEmail添加到session中
         if (token.registeredEmail && typeof token.registeredEmail === 'string') {
           session.registeredEmail = token.registeredEmail;
@@ -88,10 +90,14 @@ export const { handlers, auth } = NextAuth((req) => {
       },
     },
     session: {
-      strategy: "jwt",
+      strategy: "jwt" as const,
       maxAge: 30 * 24 * 60 * 60, // 30天
     },
   };
-});
 
-export { handlers as GET, handlers as POST }; 
+  // 创建 NextAuth handler 并调用
+  const nextAuthHandler = NextAuth(authOptions);
+  return nextAuthHandler(req, context);
+};
+
+export { handler as GET, handler as POST }; 
