@@ -41,8 +41,11 @@ export default function FeatureAnnouncement() {
         </button>
       </div>
       <div className="space-y-2 text-sm text-gray-600">
-        <p>Apply now in <strong>Sydney, Melbourne, Brisbane and Perth</strong>.</p>
-        <p>More locations coming soon.</p>
+        <ul className="list-disc list-inside space-y-1">
+          <li><strong>Australia & the Americas: Live</strong></li>
+          <li><strong>Europe & Asia: Beta (major countries & cities)</strong></li>
+          <li>Rolling out new locations weekly</li>
+        </ul>
       </div>
     </div>
   );
