@@ -59,7 +59,7 @@ export class MCPToolExecutor {
         
         return {
           jobTitle: null,
-          city: 'Melbourne',
+          city: null,
           source: 'default',
           usedResumeInference: false
         };
@@ -70,7 +70,7 @@ export class MCPToolExecutor {
       // 构建用户档案
       const defaultProfile = {
         skills: user_profile.skills && user_profile.skills.length > 0 ? user_profile.skills : ['General Skills', 'Problem Solving', 'Communication'],
-        city: searchCriteria.city || 'Melbourne',
+        city: searchCriteria.city || null,
         seniority: user_profile.seniority || 'Mid',
         jobTitles: user_profile.jobTitles && user_profile.jobTitles.length > 0 ? user_profile.jobTitles : ['General Professional'],
         openToRelocate: user_profile.openToRelocate || false,

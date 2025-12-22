@@ -116,7 +116,7 @@ export class AgentKitPlanner {
           // Fallback to basic search if no specific intent
           steps.push(this.createStep('search_jobs', {
             job_title: 'Software Engineer', // Default, should be overridden by context
-            city: userContext?.userProfile?.city || 'Melbourne'
+            city: userContext?.userProfile?.city || undefined
           }, 1));
         }
     }
