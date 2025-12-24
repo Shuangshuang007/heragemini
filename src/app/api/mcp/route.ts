@@ -100,6 +100,46 @@ const POST_TIMEOUT_MS = 10000;   // Post-processing budget 10s
 const now = () => Date.now();
 const budgetLeft = (t0: number) => Math.max(0, TOTAL_BUDGET_MS - (now() - t0));
 
+// ============================================
+// MCP Authentication (minimal implementation)
+// ============================================
+function requireMcpAuth(request: NextRequest): { authorized: boolean; error?: Response } {
+  const authHeader = request.headers.get('authorization');
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return {
+      authorized: false,
+      error: new Response(
+        JSON.stringify({ error: 'Unauthorized - Missing or invalid Bearer token' }),
+        { status: 401, headers: JSON_HEADERS }
+      )
+    };
+  }
+  
+  const token = authHeader.substring(7); // Remove "Bearer " prefix
+  const newToken = process.env.MCP_SHARED_SECRET;
+  const oldToken = process.env.MCP_SHARED_SECRET_OLD; // 3-day compatibility window
+  
+  // Accept new token (required)
+  if (newToken && token === newToken) {
+    return { authorized: true };
+  }
+  
+  // Accept old token during compatibility window (optional, 3 days only)
+  if (oldToken && token === oldToken) {
+    return { authorized: true };
+  }
+  
+  // Reject if no valid token matched
+  return {
+    authorized: false,
+    error: new Response(
+      JSON.stringify({ error: 'Unauthorized - Invalid Bearer token' }),
+      { status: 401, headers: JSON_HEADERS }
+    )
+  };
+}
+
 function json200(data: any, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(data), {
     status: 200,
@@ -528,6 +568,12 @@ async function postProcessResults(jobs: any[]): Promise<any[]> {
 // ============================================
 
 export async function GET(request: NextRequest) {
+  // MCP Authentication (minimal)
+  const auth = requireMcpAuth(request);
+  if (!auth.authorized) {
+    return auth.error!;
+  }
+  
   console.log('[MCP] GET request received');
   
   return json200({
@@ -567,6 +613,14 @@ export async function GET(request: NextRequest) {
       {
         name: 'career_skill_gap_analysis',
         description: '📊 SKILL GAP - Analyze skill gaps between two job roles',
+      },
+      {
+        name: 'job_alert',
+        description: '📣 JOB ALERT - Check recent jobs since last search / within time window (on-demand, no background push)',
+      },
+      {
+        name: 'refine_recommendations',
+        description: '🔄 REFINE JOB RECOMMENDATIONS - Refine recommended jobs based on feedback (on-demand)',
       },
     ],
     mode: HERA_MCP_MODE,
@@ -862,6 +916,12 @@ async function handleOptimizeResume({
 // ============================================
 
 export async function POST(request: NextRequest) {
+  // MCP Authentication (minimal)
+  const auth = requireMcpAuth(request);
+  if (!auth.authorized) {
+    return auth.error!;
+  }
+  
   const startTime = now();
   
   // ============================================
@@ -953,7 +1013,7 @@ export async function POST(request: NextRequest) {
       const rpcTools = [
         {
           name: "job_alert",
-          description: "📣 JOB ALERT - Send fresh jobs based on last search and time window. Use this to deliver periodic alerts with 'only new since last sent'.\n\nRules:\n• Always reuse the same session_id for one alert stream\n• Pass exclude_ids from previous meta.returned_job_ids to avoid duplicates\n• If job_title/city not provided, server backfills from last_search\n• Time window default 24h; can override with window_hours\n",
+          description: "📣 JOB ALERT - Check recent jobs since last search / within time window (on-demand, no background push). Returns only new jobs since last check.\n\nRules:\n• Always reuse the same session_id for one alert stream\n• Pass exclude_ids from previous meta.returned_job_ids to avoid duplicates\n• If job_title/city not provided, server backfills from last_search\n• Time window default 24h; can override with window_hours\n• This tool does not schedule background jobs or send notifications; it only returns results when invoked by the user.\n",
           inputSchema: {
             type: "object",
             properties: {
