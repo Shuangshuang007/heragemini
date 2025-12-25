@@ -141,24 +141,59 @@ export async function POST(request: NextRequest) {
       }
     };
 
+    // Step 2: Gateway always uses its own MCP token (ignore upstream Authorization)
+    // This avoids security risks and troubleshooting confusion
+    const mcpToken = process.env.MCP_SHARED_SECRET;
+    const mcpTokenOld = process.env.MCP_SHARED_SECRET_OLD;
+    
+    // Log token presence (without exposing full value)
+    const tokenPresent = !!(mcpToken || mcpTokenOld);
+    const tokenLen = mcpToken ? mcpToken.length : (mcpTokenOld ? mcpTokenOld.length : 0);
+    const tokenHead = mcpToken ? mcpToken.substring(0, 4) : (mcpTokenOld ? mcpTokenOld.substring(0, 4) : 'none');
+    const tokenTail = mcpToken ? mcpToken.substring(mcpToken.length - 4) : (mcpTokenOld ? mcpTokenOld.substring(mcpTokenOld.length - 4) : 'none');
+    
+    console.log('[Gateway] MCP token check:', {
+      present: tokenPresent,
+      len: tokenLen,
+      head: tokenHead,
+      tail: tokenTail
+    });
+
+    if (!mcpToken && !mcpTokenOld) {
+      console.error('[Gateway] MCP_SHARED_SECRET not found in environment variables');
+      return NextResponse.json(
+        {
+          success: false,
+          tool,
+          error: 'Gateway configuration error: MCP_SHARED_SECRET not set',
+          result: null
+        },
+        { status: 500 }
+      );
+    }
+
     console.log('[Gateway] Calling MCP Server:', {
       url: mcpUrl,
       baseUrl,
       tool,
-      requestId: mcpRequest.id
+      requestId: mcpRequest.id,
+      usingGatewayToken: true
     });
 
     // Make HTTP call to MCP Server
     // Note: If Gateway and MCP are on same server, use 127.0.0.1 instead of localhost
     const mcpFetchUrl = mcpUrl.replace('localhost', '127.0.0.1');
     
+    // Gateway always uses its own token (ignore upstream Authorization for security)
+    const authHeader = mcpToken ? `Bearer ${mcpToken}` : (mcpTokenOld ? `Bearer ${mcpTokenOld}` : null);
+    
     const mcpResponse = await fetch(mcpFetchUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // Forward Authorization header if present
-        ...(request.headers.get('Authorization') && {
-          'Authorization': request.headers.get('Authorization')!
+        // Gateway always uses its own MCP_SHARED_SECRET (ignore upstream Authorization)
+        ...(authHeader && {
+          'Authorization': authHeader
         }),
         // Forward session headers if present
         ...(request.headers.get('x-session-id') && {

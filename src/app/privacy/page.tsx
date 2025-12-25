@@ -24,6 +24,7 @@ export default function PrivacyPage() {
           <div className="text-center mb-8">
             <h1 className="text-lg font-bold text-gray-900 mb-2">Privacy and Cookie Policy</h1>
             <p className="text-sm text-gray-600">Effective Date: July 28, 2025</p>
+            <p className="text-sm text-gray-500 mt-1">Last Updated: December 24, 2025</p>
           </div>
           
           {/* Privacy Content */}
@@ -82,6 +83,38 @@ export default function PrivacyPage() {
               </section>
 
               <section>
+                <h2 className="text-sm font-semibold text-gray-900 mb-3">3.1 Third-Party Job Data Sources</h2>
+                <p className="text-sm mb-3">
+                  We distinguish between <strong>ATS-based sources</strong> and <strong>job board platforms</strong>:
+                </p>
+                
+                <div className="text-sm mb-3 ml-4">
+                  <p className="font-semibold mb-2">1) ATS / Employer Career Sources (e.g., Lever)</p>
+                  <ul className="list-disc list-inside space-y-1 ml-4">
+                    <li>We may integrate with <strong>ATS providers</strong> (e.g., Lever) and/or employer career pages that publish job postings via <strong>official or openly available</strong> job feeds/endpoints.</li>
+                    <li>For these sources, we may store <strong>job metadata</strong> (e.g., title, company, location, posting URL, timestamps, source tag) to enable search, deduplication, ranking, and recommendations.</li>
+                  </ul>
+                </div>
+
+                <div className="text-sm mb-3 ml-4">
+                  <p className="font-semibold mb-2">2) Job Board Platforms (e.g., LinkedIn, SEEK, Jora, Adzuna)</p>
+                  <ul className="list-disc list-inside space-y-1 ml-4">
+                    <li>We <strong>do not scrape, copy, or host</strong> job content from these platforms.</li>
+                    <li>We may provide <strong>search/deep links</strong> that take users to the original platform.</li>
+                    <li>When users click these links, their interaction is governed by the platform's own terms and privacy policy.</li>
+                  </ul>
+                </div>
+
+                <div className="text-sm mt-3 p-3 bg-gray-50 rounded">
+                  <p className="font-semibold mb-2">What we do NOT do:</p>
+                  <ul className="list-disc list-inside space-y-1 ml-4">
+                    <li>We do not scrape or replicate full job page content from job board platforms.</li>
+                    <li>We do not collect users' job board platform account credentials.</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section>
                 <h2 className="text-sm font-semibold text-gray-900 mb-3">4. International Data Transfers</h2>
                 <p className="text-sm">
                   If we transfer personal information outside Australia (e.g., to servers or partners overseas), we take reasonable steps to ensure those recipients comply with privacy obligations similar to those under Australian law.
@@ -91,8 +124,14 @@ export default function PrivacyPage() {
               <section>
                 <h2 className="text-sm font-semibold text-gray-900 mb-3">5. Security of Your Information</h2>
                 <p className="text-sm mb-3">
-                  We implement reasonable physical, technical, and administrative safeguards to protect your information from misuse, interference, loss, and unauthorised access, modification, or disclosure.
+                  We implement reasonable physical, technical, and administrative safeguards to protect your information from misuse, interference, loss, and unauthorised access, modification, or disclosure. Our security measures include:
                 </p>
+                <ul className="text-sm list-disc list-inside space-y-1 ml-4 mb-3">
+                  <li><strong>Transport encryption</strong>: All data transmission uses HTTPS/TLS encryption</li>
+                  <li><strong>Access control</strong>: We follow the principle of least privilege for data access</li>
+                  <li><strong>Secure credential management</strong>: Authentication tokens and secrets are stored securely in environment variables or secrets manager, and never hardcoded in source code or documentation</li>
+                  <li><strong>Log sanitization</strong>: Sensitive information (such as authorization headers) is not logged</li>
+                </ul>
                 <p className="text-sm">
                   However, no method of electronic transmission or storage is completely secure, and we cannot guarantee absolute security.
                 </p>
@@ -125,12 +164,37 @@ export default function PrivacyPage() {
                   <li>Request deletion of your data (subject to legal and operational retention limits);</li>
                   <li>Opt out of marketing communications at any time.</li>
                 </ul>
+                
+                <div className="text-sm mt-4 p-3 bg-gray-50 rounded">
+                  <p className="font-semibold mb-2">How to Request Data Deletion:</p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2">
+                    <li>Send an email to <a href="mailto:shuang@heraai.net.au" className="text-blue-600 hover:underline">shuang@heraai.net.au</a> with the subject "Data Deletion Request"</li>
+                    <li>Include your registered email address and specify which data you want deleted (e.g., "all data", "resume only", "application history")</li>
+                    <li>To prevent unauthorized deletion, we may need to verify your control over the account (for example, by confirming the request is sent from your registered email address)</li>
+                    <li>We will confirm receipt within 5 business days and complete deletion within 30 days (unless legal obligations require longer retention)</li>
+                    <li>You will receive confirmation once deletion is complete</li>
+                  </ol>
+                  <p className="text-sm mt-2">
+                    <strong>Note:</strong> Some data may be retained longer if required by law (e.g., financial records for 7 years) or if anonymised for analytics purposes.
+                  </p>
+                </div>
               </section>
 
               <section>
                 <h2 className="text-sm font-semibold text-gray-900 mb-3">8. Retention of Information</h2>
+                <p className="text-sm mb-3">
+                  We retain your personal information only as long as needed for the purposes described in this policy or as required by law. Specific retention periods are as follows:
+                </p>
+                <ul className="text-sm list-disc list-inside space-y-1 ml-4 mb-3">
+                  <li><strong>Resume content and profile data</strong>: Retained until you request deletion or your account has been inactive (no login or service usage) for 3 years, whichever comes first.</li>
+                  <li><strong>Job application history</strong>: Retained for 2 years from the date of application, or until you request deletion.</li>
+                  <li><strong>Email address and account information</strong>: Retained until you request account deletion or your account has been inactive (no login or service usage) for 3 years.</li>
+                  <li><strong>Search history and preferences</strong>: Retained for 1 year from last activity (last search or service usage), or until you request deletion.</li>
+                  <li><strong>Logs and analytics data</strong>: We aim to retain logs and analytics data for up to 90 days, then anonymise or delete them. Actual retention periods may vary based on our service providers' policies (e.g., application logs, database traces, third-party analytics tools).</li>
+                  <li><strong>Job metadata from ATS sources</strong>: Retained for 6 months after we determine a job posting is no longer available (based on our data synchronization status), then deleted.</li>
+                </ul>
                 <p className="text-sm">
-                  We retain your personal information only as long as needed for the purposes described in this policy or as required by law. We may anonymise data for longer-term analysis and product improvement.
+                  We may anonymise data for longer-term analysis and product improvement. Anonymised data cannot be linked back to you and may be retained indefinitely.
                 </p>
               </section>
 

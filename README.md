@@ -2,6 +2,24 @@
 
 An intelligent job search platform that aggregates and analyzes job listings from multiple sources including LinkedIn, Seek, Jora, and Adzuna.
 
+## Third-Party Data Sources
+
+Hera AI distinguishes between **ATS-based sources** and **job board platforms**:
+
+### ATS / Employer Career Sources (e.g., Lever)
+- We may integrate with **ATS providers** (e.g., Lever) and/or employer career pages that publish job postings via **official or openly available** job feeds/endpoints.
+- For these sources, we may store **job metadata** (e.g., title, company, location, posting URL, timestamps, source tag) to enable search, deduplication, ranking, and recommendations.
+
+### Job Board Platforms (e.g., LinkedIn, SEEK, Jora, Adzuna)
+- We **do not scrape, copy, or host** job content from these platforms.
+- We may provide **search/deep links** that take users to the original platform.
+- When users click these links, their interaction is governed by the platform's own terms and privacy policy.
+
+**What we do NOT do:**
+- We do not scrape or replicate full job page content from job board platforms.
+- We do not collect users' job board platform account credentials.
+- All job data displayed comes from Hera AI's own aggregated database (not from third-party platforms).
+
 ## Features
 
 - Multi-source job aggregation (LinkedIn, Seek, Jora, Adzuna)
@@ -83,7 +101,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Disclaimer
 
-This project is for educational purposes only. Please respect the terms of service of the job platforms being scraped.
+This project is for educational purposes only. Hera AI does not scrape or copy content from job board platforms (LinkedIn, SEEK, Jora, Adzuna). We only generate search links that direct users to the original platforms, and we aggregate job metadata from ATS sources via official or openly available feeds. Please respect the terms of service of all platforms.
 
 ## Dependency Versions
 
