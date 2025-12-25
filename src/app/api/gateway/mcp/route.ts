@@ -120,7 +120,20 @@ export async function POST(request: NextRequest) {
     // Validate arguments (should be an object, but allow undefined/null)
     const toolArguments = args || {};
 
-    // Step 1: Debug log - Print arguments keys and key fields (for troubleshooting GPTs Actions)
+    // Step 1: Field name mapping - Map GPTs Actions field names to MCP expected field names
+    // This fixes the issue where GPTs sends 'query'/'location' but MCP expects 'job_title'/'city'
+    if (toolArguments.query && !toolArguments.job_title) {
+      toolArguments.job_title = toolArguments.query;
+      delete toolArguments.query;
+      console.log('[Gateway] Field mapping: query → job_title');
+    }
+    if (toolArguments.location && !toolArguments.city) {
+      toolArguments.city = toolArguments.location;
+      delete toolArguments.location;
+      console.log('[Gateway] Field mapping: location → city');
+    }
+
+    // Step 2: Debug log - Print arguments keys and key fields (for troubleshooting GPTs Actions)
     const argsKeys = toolArguments ? Object.keys(toolArguments) : [];
     const hasJobTitle = 'job_title' in toolArguments;
     const hasQuery = 'query' in toolArguments;
