@@ -120,9 +120,30 @@ export async function POST(request: NextRequest) {
     // Validate arguments (should be an object, but allow undefined/null)
     const toolArguments = args || {};
 
-    console.log('[Gateway] Tool call request:', {
+    // Step 1: Debug log - Print arguments keys and key fields (for troubleshooting GPTs Actions)
+    const argsKeys = toolArguments ? Object.keys(toolArguments) : [];
+    const hasJobTitle = 'job_title' in toolArguments;
+    const hasQuery = 'query' in toolArguments;
+    const hasCity = 'city' in toolArguments;
+    const hasLocation = 'location' in toolArguments;
+    
+    // Print values (truncated for safety, max 50 chars)
+    const jobTitleValue = toolArguments?.job_title ? String(toolArguments.job_title).substring(0, 50) : null;
+    const queryValue = toolArguments?.query ? String(toolArguments.query).substring(0, 50) : null;
+    const cityValue = toolArguments?.city ? String(toolArguments.city).substring(0, 50) : null;
+    const locationValue = toolArguments?.location ? String(toolArguments.location).substring(0, 50) : null;
+
+    console.log('[Gateway] Tool call request (DEBUG):', {
       tool,
-      hasArguments: !!toolArguments,
+      argsKeys: argsKeys.length > 0 ? argsKeys : '[]',
+      hasJobTitle,
+      hasQuery,
+      hasCity,
+      hasLocation,
+      jobTitle: jobTitleValue || 'NOT_PRESENT',
+      query: queryValue || 'NOT_PRESENT',
+      city: cityValue || 'NOT_PRESENT',
+      location: locationValue || 'NOT_PRESENT',
       timestamp: new Date().toISOString()
     });
 
@@ -264,11 +285,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('[Gateway] Tool call completed:', {
+    // Debug log: Print response structure for troubleshooting
+    const resultType = Array.isArray(finalResult) ? 'array' : typeof finalResult;
+    const resultKeys = finalResult && typeof finalResult === 'object' && !Array.isArray(finalResult) 
+      ? Object.keys(finalResult).slice(0, 10) // First 10 keys only
+      : null;
+    const hasJobs = finalResult && typeof finalResult === 'object' 
+      ? ('jobs' in finalResult || 'content' in finalResult || 'data' in finalResult)
+      : false;
+
+    console.log('[Gateway] Tool call completed (DEBUG):', {
       tool,
       success: true,
       elapsed: `${elapsed}ms`,
-      hasResult: !!finalResult
+      hasResult: !!finalResult,
+      resultType,
+      resultKeys: resultKeys || (Array.isArray(finalResult) ? `array[${finalResult.length}]` : 'N/A'),
+      hasJobs,
+      resultTopLevel: finalResult && typeof finalResult === 'object' && !Array.isArray(finalResult)
+        ? Object.keys(finalResult).slice(0, 5).join(',')
+        : 'N/A'
     });
 
     // Return REST API format
