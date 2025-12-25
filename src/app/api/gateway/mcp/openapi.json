@@ -27,7 +27,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["tool"],
+                "required": ["tool", "arguments"],
                 "properties": {
                   "tool": {
                     "type": "string",
@@ -48,8 +48,26 @@
                   },
                   "arguments": {
                     "type": "object",
-                    "description": "Tool-specific arguments. The structure depends on which tool is being called. Refer to MCP tool documentation for specific argument schemas.",
-                    "additionalProperties": true
+                    "description": "Tool-specific arguments. The structure depends on which tool is being called. Refer to MCP tool documentation for specific argument schemas. For search_jobs, required fields: job_title (string) and city (string).",
+                    "additionalProperties": true,
+                    "properties": {
+                      "job_title": {
+                        "type": "string",
+                        "description": "Job title to search for (e.g., 'Software Engineer', 'Data Analyst')"
+                      },
+                      "city": {
+                        "type": "string",
+                        "description": "City name for job location (e.g., 'Sydney', 'Melbourne')"
+                      },
+                      "query": {
+                        "type": "string",
+                        "description": "Alternative field name for job_title (will be mapped to job_title)"
+                      },
+                      "location": {
+                        "type": "string",
+                        "description": "Alternative field name for city (will be mapped to city)"
+                      }
+                    }
                   }
                 }
               },
