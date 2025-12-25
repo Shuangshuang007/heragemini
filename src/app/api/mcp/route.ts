@@ -967,7 +967,9 @@ export async function POST(request: NextRequest) {
       const argSessPrim = body.params?.arguments?.session_id || '';
       const sessForFeedback = String(argSessPrim || headerSess || (crypto.randomUUID?.() || Math.random().toString(36).slice(2)));
 
-      feedback_event_id = await fc.recordStart(
+      // recordStart立即返回event_id，写入在后台进行（fire-and-forget）
+      // 添加超时保护，避免阻塞主流程
+      const recordStartPromise = fc.recordStart(
         body.params.name,
         body.params.arguments || {},
         {
@@ -975,8 +977,14 @@ export async function POST(request: NextRequest) {
           session_id: sessForFeedback,
           user_email: body.params.arguments?.user_email
         }
-      ).catch(err => {
-        console.error('[Feedback] recordStart failed (non-blocking):', err);
+      );
+      
+      const recordStartTimeout = new Promise<string | null>((resolve) => {
+        setTimeout(() => resolve(null), 100); // 100ms超时，recordStart应该立即返回
+      });
+      
+      feedback_event_id = await Promise.race([recordStartPromise, recordStartTimeout]).catch(err => {
+        console.warn('[Feedback] FEEDBACK_WRITE_TIMEOUT: recordStart failed (non-blocking):', err?.message || err);
         return null;
       });
       

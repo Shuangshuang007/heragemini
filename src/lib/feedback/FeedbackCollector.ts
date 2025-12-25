@@ -66,10 +66,17 @@ export class FeedbackCollector {
   ): Promise<string> {
     const event_id = crypto.randomUUID();
     
-    // 完全非阻塞（不等待结果）
+    // 完全非阻塞（不等待结果，fire-and-forget）
     setImmediate(() => {
+      // 使用asyncWrite包装，自动处理超时和错误
       this.asyncWrite(async () => {
-        const db = await getDb();
+        // 添加getDb超时保护
+        const dbPromise = getDb();
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('FEEDBACK_WRITE_TIMEOUT: getDb() exceeded 1.5s')), 1500);
+        });
+        
+        const db = await Promise.race([dbPromise, timeoutPromise]);
         
         // 处理PII（个人信息保护）
         const piiData = this.processPII(metadata.user_email);
@@ -101,10 +108,18 @@ export class FeedbackCollector {
    * 更新输出结果 - 完全非阻塞
    */
   recordEnd(event_id: string, output: any): void {
-    // 完全非阻塞（不等待，不阻塞主流程）
+    // 完全非阻塞（不等待，不阻塞主流程，fire-and-forget）
     setImmediate(() => {
+      // 使用asyncWrite包装，自动处理超时和错误
       this.asyncWrite(async () => {
-        const db = await getDb();
+        // 添加getDb超时保护
+        const dbPromise = getDb();
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('FEEDBACK_WRITE_TIMEOUT: getDb() exceeded 1.5s')), 1500);
+        });
+        
+        const db = await Promise.race([dbPromise, timeoutPromise]);
+        
         await db.collection('feedback_events').updateOne(
           { event_id },
           {
@@ -121,24 +136,46 @@ export class FeedbackCollector {
   
   /**
    * 获取会话历史反馈
+   * 添加超时保护：connect 1.5秒，total 2秒
    */
   async getSessionFeedback(session_id: string, limit: number = 10): Promise<FeedbackEvent[]> {
     try {
-      const db = await getDb();
+      // 添加getDb超时保护
+      const dbPromise = getDb();
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('FEEDBACK_WRITE_TIMEOUT: getDb() exceeded 1.5s')), 1500);
+      });
+      
+      const db = await Promise.race([dbPromise, timeoutPromise]);
       const col = db.collection<FeedbackEvent>('feedback_events');
       
-      const docs: WithId<FeedbackEvent>[] = await col
+      // 添加查询超时保护（总超时2秒）
+      const queryPromise = col
         .find({ session_id })
         .sort({ timestamp: -1 })
         .limit(limit)
         .toArray();
       
+      const queryTimeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('FEEDBACK_WRITE_TIMEOUT: query exceeded 2s')), 2000);
+      });
+      
+      const docs: WithId<FeedbackEvent>[] = await Promise.race([queryPromise, queryTimeoutPromise]);
+      
       // 去掉 _id，返回干净的 FeedbackEvent[]
       const events: FeedbackEvent[] = docs.map(({ _id, ...rest }) => rest);
       return events;
       
-    } catch (error) {
-      console.error('[Feedback] Get session error:', error);
+    } catch (error: any) {
+      // 降级为warn，避免误导为主流程错误
+      const errorMsg = error?.message || String(error);
+      const isTimeout = errorMsg.includes('timeout') || errorMsg.includes('TIMEOUT') || errorMsg.includes('secureConnect');
+      
+      if (isTimeout) {
+        console.warn('[Feedback] FEEDBACK_WRITE_TIMEOUT: Get session failed (non-blocking):', errorMsg);
+      } else {
+        console.warn('[Feedback] Get session error (non-blocking):', errorMsg);
+      }
       return [];
     }
   }
@@ -148,10 +185,18 @@ export class FeedbackCollector {
    * 用于记录 shown_jobs, liked_jobs, disliked_jobs
    */
   updateFeedback(event_id: string, field: string, job_ids: string[]): void {
-    // 完全非阻塞（不等待，不阻塞主流程）
+    // 完全非阻塞（不等待，不阻塞主流程，fire-and-forget）
     setImmediate(() => {
+      // 使用asyncWrite包装，自动处理超时和错误
       this.asyncWrite(async () => {
-        const db = await getDb();
+        // 添加getDb超时保护
+        const dbPromise = getDb();
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('FEEDBACK_WRITE_TIMEOUT: getDb() exceeded 1.5s')), 1500);
+        });
+        
+        const db = await Promise.race([dbPromise, timeoutPromise]);
+        
         await db.collection('feedback_events').updateOne(
           { event_id },
           {
@@ -208,12 +253,28 @@ export class FeedbackCollector {
   
   /**
    * 异步写入包装器 - 吞掉所有错误，不影响主流程
+   * 添加严格短超时：connect 1-2秒，total 2-3秒
    */
   private async asyncWrite(fn: () => Promise<void>): Promise<void> {
     try {
-      await fn();
+      // 严格短超时：2秒总超时
+      const timeoutPromise = new Promise<void>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('FEEDBACK_WRITE_TIMEOUT: Operation exceeded 2s timeout'));
+        }, 2000);
+      });
+      
+      await Promise.race([fn(), timeoutPromise]);
     } catch (err: any) {
-      console.error('[Feedback] Write error (non-blocking, ignored):', err.message);
+      // 降级为warn，避免误导为主流程错误
+      const errorMsg = err.message || String(err);
+      const isTimeout = errorMsg.includes('timeout') || errorMsg.includes('TIMEOUT') || errorMsg.includes('secureConnect');
+      
+      if (isTimeout) {
+        console.warn('[Feedback] FEEDBACK_WRITE_TIMEOUT (non-blocking, ignored):', errorMsg);
+      } else {
+        console.warn('[Feedback] Write error (non-blocking, ignored):', errorMsg);
+      }
       // 不抛出异常，确保主流程不受影响
     }
   }
