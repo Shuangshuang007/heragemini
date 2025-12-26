@@ -3363,7 +3363,7 @@ export async function POST(request: NextRequest) {
                 
                 if (liked_jobs.length > 0) {
                   // ✅ 修复：兼容 location 字段的各种格式（string/array/object/locations）
-                  const extractLocations = (loc: any) => {
+                  const extractLocations = (loc: any): string[] => {
                     if (!loc) return [];
                     // 优先使用 locations（复数，字符串）
                     if (typeof loc === 'string') return [loc];
@@ -3432,7 +3432,7 @@ export async function POST(request: NextRequest) {
                 
                 // 地点匹配 +10
                 // ✅ 修复：兼容 location 字段的各种格式
-                const extractLocationsForJob = (loc: any) => {
+                const extractLocationsForJob = (loc: any): string[] => {
                   if (!loc) return [];
                   if (typeof loc === 'string') return [loc];
                   // ✅ 修复：递归处理数组，支持 object[] 如 [{city,state}]
