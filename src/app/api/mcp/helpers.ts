@@ -53,10 +53,36 @@ export function deduplicateJobs(jobs: Job[]): Job[] {
  * Uses normalized company + title + location
  */
 function createJobFingerprint(job: Job): string {
-  const company = (job.company || '').toLowerCase().trim().replace(/\s+/g, ' ');
-  const title = (job.title || '').toLowerCase().trim().replace(/\s+/g, ' ');
-  const location = (job.location || '').toLowerCase().trim().replace(/\s+/g, ' ');
-  
+  const norm = (v: any) => (v == null ? "" : String(v));
+
+  const normalizeLocation = (loc: any): string => {
+    if (!loc) return "";
+    if (typeof loc === "string") return loc;
+    if (Array.isArray(loc)) {
+      // 支持 ["Sydney","NSW"] 或 [{city,state}, ...]
+      return loc
+        .flatMap((x) => {
+          if (!x) return [];
+          if (typeof x === "string") return [x];
+          if (typeof x === "object")
+            return [[x.city, x.state, x.region, x.country].filter(Boolean).join(", ")].filter(Boolean);
+          return [String(x)];
+        })
+        .filter(Boolean)
+        .join(", ");
+    }
+    if (typeof loc === "object") {
+      return [loc.city, loc.state, loc.region, loc.country].filter(Boolean).join(", ");
+    }
+    return String(loc);
+  };
+
+  const company = norm(job.company || job.company_name).toLowerCase().trim().replace(/\s+/g, " ");
+  const title = norm(job.title || job.job_title).toLowerCase().trim().replace(/\s+/g, " ");
+  // 兼容 locations/location/locationRaw
+  const rawLoc = (job as any).locations ?? (job as any).location ?? (job as any).locationRaw ?? "";
+  const location = normalizeLocation(rawLoc).toLowerCase().trim().replace(/\s+/g, " ");
+
   return `${company}_${title}_${location}`;
 }
 
