@@ -24,13 +24,14 @@ export default function PrivacyPage() {
           <div className="text-center mb-8">
             <h1 className="text-lg font-bold text-gray-900 mb-2">Privacy and Cookie Policy</h1>
             <p className="text-sm text-gray-600">Effective Date: July 28, 2025</p>
-            <p className="text-sm text-gray-500 mt-1">Last Updated: December 24, 2025</p>
+            <p className="text-sm text-gray-600 mt-1">Last Updated: December 26, 2025</p>
           </div>
           
           {/* Privacy Content */}
           <div className="max-w-none text-gray-700 text-sm">
             <p className="mb-6">
               Héra AI ("we", "us", or "our") is committed to protecting your privacy and handling your personal information in accordance with the Australian Privacy Principles under the Privacy Act 1988 (Cth). This Privacy and Cookie Policy explains how we collect, use, disclose and protect your information when you use our website and services.
+              We may provide our services to users outside Australia, including in the United States (including California) and Canada. Where applicable, we take reasonable steps to honor privacy rights available under relevant laws in those regions.
             </p>
 
             <div className="space-y-6">
@@ -78,7 +79,7 @@ export default function PrivacyPage() {
                   <li>Our professional advisors, insurers, or auditors, where necessary.</li>
                 </ul>
                 <p className="text-sm mt-3">
-                  All disclosures are made in accordance with Australian privacy law.
+                  All disclosures are made in accordance with Australian privacy law and other applicable privacy laws.
                 </p>
               </section>
 
@@ -117,7 +118,7 @@ export default function PrivacyPage() {
               <section>
                 <h2 className="text-sm font-semibold text-gray-900 mb-3">4. International Data Transfers</h2>
                 <p className="text-sm">
-                  If we transfer personal information outside Australia (e.g., to servers or partners overseas), we take reasonable steps to ensure those recipients comply with privacy obligations similar to those under Australian law.
+                  We may store and process personal information in Australia and in other countries where we or our service providers operate (which may include the United States and Canada). When we transfer personal information internationally, we take reasonable steps to ensure appropriate safeguards are in place and that recipients handle the information in a manner consistent with this Policy.
                 </p>
               </section>
 
@@ -166,7 +167,9 @@ export default function PrivacyPage() {
                 </ul>
                 
                 <div className="text-sm mt-4 p-3 bg-gray-50 rounded">
-                  <p className="font-semibold mb-2">How to Request Data Deletion:</p>
+                  <p className="font-semibold mb-2">How to Submit Other Privacy Requests (Access/Correction):</p>
+                  <p className="text-sm mb-2">Send an email to <a href="mailto:shuang@heraai.net.au" className="text-blue-600 hover:underline">shuang@heraai.net.au</a> with the subject "Privacy Request (Access/Correction)"</p>
+                  <p className="font-semibold mb-2 mt-4">How to Request Data Deletion:</p>
                   <ol className="list-decimal list-inside space-y-1 ml-2">
                     <li>Send an email to <a href="mailto:shuang@heraai.net.au" className="text-blue-600 hover:underline">shuang@heraai.net.au</a> with the subject "Data Deletion Request"</li>
                     <li>Include your registered email address and specify which data you want deleted (e.g., "all data", "resume only", "application history")</li>
@@ -213,7 +216,69 @@ export default function PrivacyPage() {
               </section>
 
               <section className="mt-8 pt-6 border-t border-gray-200">
-                <h2 className="text-sm font-semibold text-gray-900 mb-3">11. Contact Us</h2>
+                <h2 className="text-sm font-semibold text-gray-900 mb-3">11. California Privacy Notice (CCPA/CPRA)</h2>
+                <p className="text-sm mb-3">
+                  If you are a California resident, you may have additional rights under the California Consumer Privacy Act, as amended by the California Privacy Rights Act ("CCPA/CPRA"). These rights may include the right to know/access, delete, correct, and to opt out of the sale or sharing of personal information, and the right to limit certain uses of sensitive personal information.
+                </p>
+                <div className="text-sm mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">11.1 Categories of Personal Information We Collect</h3>
+                  <p className="text-sm mb-3">
+                    We collect the categories of personal information described in Section 1 of this Policy, which may include identifiers (e.g., name, email), professional/employment information (e.g., resume, work experience, education), and internet or similar network activity (e.g., IP address, usage analytics).
+                  </p>
+                </div>
+                <div className="text-sm mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">11.2 Purposes for Collection / Use</h3>
+                  <p className="text-sm mb-3">
+                    We collect and use personal information for the business and commercial purposes described in Section 2 (e.g., providing and improving services, generating job profiles, recommending jobs, and supporting applications).
+                  </p>
+                </div>
+                <div className="text-sm mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">11.3 Disclosure</h3>
+                  <p className="text-sm mb-3">
+                    We may disclose personal information to the categories of recipients described in Section 3 (e.g., service providers, employers/recruitment platforms with your consent, and legal authorities when required).
+                  </p>
+                </div>
+                <div className="text-sm mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">11.4 "Sale" / "Sharing"</h3>
+                  <p className="text-sm mb-3">
+                    We do not sell your personal information. We also do not share personal information for cross-context behavioral advertising in exchange for money. If our practices change such that we "sell" or "share" personal information as defined by California law, we will provide a "Do Not Sell or Share My Personal Information" mechanism as required.
+                  </p>
+                </div>
+                <div className="text-sm mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">11.5 Sensitive Personal Information</h3>
+                  <p className="text-sm mb-3">
+                    We do not use or disclose sensitive personal information for purposes other than providing our services and as reasonably expected by an average consumer requesting those services. Where applicable, California residents may have the right to limit certain uses and disclosures of sensitive personal information.
+                  </p>
+                </div>
+                <div className="text-sm mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">11.6 Exercising Your Rights (Requests & Verification)</h3>
+                  <p className="text-sm mb-3">
+                    To submit a request to access/know, delete, or correct your personal information, email us at <a href="mailto:shuang@heraai.net.au" className="text-blue-600 hover:underline">shuang@heraai.net.au</a> with the subject line:
+                  </p>
+                  <p className="text-sm mb-3 ml-4">
+                    "California Privacy Request (Access/Deletion/Correction)"
+                  </p>
+                  <p className="text-sm mb-3">
+                    We will verify your request using reasonable methods (for example, by confirming the request is sent from your registered email address and/or asking additional information to confirm identity).
+                  </p>
+                </div>
+                <div className="text-sm mb-3">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-2">11.7 Authorized Agent & Non-Discrimination</h3>
+                  <p className="text-sm">
+                    Where required by law, you may use an authorized agent to submit requests on your behalf. We will not discriminate against you for exercising your privacy rights.
+                  </p>
+                </div>
+              </section>
+
+              <section className="mt-8 pt-6 border-t border-gray-200">
+                <h2 className="text-sm font-semibold text-gray-900 mb-3">12. Canada (PIPEDA) Notice</h2>
+                <p className="text-sm">
+                  If you are in Canada, you may have rights to access and request correction of personal information we hold about you, and to withdraw consent where consent is the basis for processing. You can submit a request using the process described in Section 7 (Your Rights and Choices). Personal information may be processed outside Canada (see Section 4 International Data Transfers).
+                </p>
+              </section>
+
+              <section className="mt-8 pt-6 border-t border-gray-200">
+                <h2 className="text-sm font-semibold text-gray-900 mb-3">Contact Us</h2>
                 <p className="text-sm mb-3">
                   For any privacy-related questions, complaints, or access requests, please contact:
                 </p>
