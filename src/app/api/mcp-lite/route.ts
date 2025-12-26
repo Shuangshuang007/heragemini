@@ -1930,20 +1930,17 @@ export async function POST(request: NextRequest) {
 
           // Validate required params
           if (!jobTitle || !city) {
+            const missing = [];
+            if (!jobTitle) missing.push("job_title");
+            if (!city) missing.push("city");
+            
             return json200({
               jsonrpc: "2.0",
               id: body.id ?? null,
               result: {
                 content: [{
-                  type: "json",
-                  data: {
-                    content: {
-                      jobs: [],
-                      total: 0,
-                      note: "missing_params",
-                      message: "job_title and city are required"
-                    }
-                  }
+                  type: "text",
+                  text: `Please provide ${missing.join(" and ")} to search for jobs. For example: "Software Engineer" in "New York" or "Remote".`
                 }],
                 isError: false
               }
@@ -2543,6 +2540,25 @@ export async function POST(request: NextRequest) {
             user_email,      // Phase 2: 用于后台统计
             exclude_ids = [] // GPT 方案: 直接传参去重（实时生效）
           } = args;
+          
+          // ✅ Quick validation: If user_profile is empty, return immediately (don't enter time-consuming flow)
+          if (!user_profile || typeof user_profile !== 'object' || Object.keys(user_profile).length === 0) {
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{
+                  type: "text",
+                  text: `I need your career information to provide personalized job recommendations. Please share:\n\n` +
+                        `• Your job title(s) or target positions\n` +
+                        `• Your skills and competencies (the more details, the better)\n` +
+                        `• Your preferred city or location\n\n` +
+                        `Alternatively, you can share your resume and I'll extract the information to match you with suitable jobs.`
+                }],
+                isError: false
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
           
           console.log('[MCP] recommend_jobs - exclude_ids:', exclude_ids.length);
           
