@@ -4443,12 +4443,34 @@ export async function POST(request: NextRequest) {
         // ============================================
         else if (name === "career_skill_gap_analysis") {
           const traceId = crypto.randomUUID();
-          const { from_job, to_job } = args;
+          
+          // ✅ 修复：参数别名映射，兼容 job_title/query 等字段名
+          const from_job = args.from_job ?? args.job_title ?? args.current_role ?? "";
+          const to_job = args.to_job ?? args.query ?? args.target_role ?? "";
 
           console.log('[MCP] career_skill_gap_analysis - Input:', { 
             from_job, 
-            to_job 
+            to_job,
+            raw_args: args
           });
+
+          // ✅ 修复：参数验证，返回友好错误而不是 TypeError
+          if (!from_job || !to_job) {
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{
+                  type: "text",
+                  text: `❌ Missing required parameters for skill gap analysis.\n\n` +
+                    `Required: from_job and to_job\n` +
+                    `Also supported: job_title (for from_job), query (for to_job), current_role, target_role\n\n` +
+                    `Example: { "from_job": "Software Engineer", "to_job": "Product Manager" }`
+                }],
+                isError: true
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
 
           try {
             const apiUrl = process.env.CAREER_SWITCH_API_URL || 'http://149.28.175.142:3009';
@@ -4485,7 +4507,8 @@ export async function POST(request: NextRequest) {
               
               if (transitionsResponse.ok) {
                 const transitionsData = await transitionsResponse.json();
-                const toLower = to_job.toLowerCase();
+                // ✅ 修复：在所有 toLowerCase() 调用前添加 String(x || "")
+                const toLower = String(to_job || "").toLowerCase();
                 
                 // Try to find nearest match by fuzzy string matching
                 const nearest = (transitionsData.transitions || []).find((t: any) =>
