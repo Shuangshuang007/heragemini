@@ -3362,12 +3362,29 @@ export async function POST(request: NextRequest) {
                 const liked_jobs = await queryJobsByIds(liked_job_ids);
                 
                 if (liked_jobs.length > 0) {
-                  const extractLocations = (loc: any) => Array.isArray(loc) ? loc : (loc ? [loc] : []);
+                  // ✅ 修复：兼容 location 字段的各种格式（string/array/object/locations）
+                  const extractLocations = (loc: any) => {
+                    if (!loc) return [];
+                    // 优先使用 locations（复数，字符串）
+                    if (typeof loc === 'string') return [loc];
+                    // ✅ 修复：递归处理数组，支持 object[] 如 [{city,state}]
+                    if (Array.isArray(loc)) return loc.flatMap((item: any) => extractLocations(item));
+                    // 如果是对象（如 {city, state, country}），组装成字符串
+                    if (typeof loc === 'object') {
+                      const parts = [loc.city, loc.state, loc.country, loc.locations].filter(Boolean);
+                      return parts.length > 0 ? [parts.join(', ')] : [];
+                    }
+                    return [];
+                  };
+                  
+                  // ✅ 修复：空数组 [] 是 truthy，需要显式检查长度
+                  const getLocationValue = (j: any) => (Array.isArray(j.locations) && j.locations.length > 0) ? j.locations : j.location;
+                  
                   preferences = {
                     preferred_titles: [...new Set(liked_jobs.map((j: any) => j.title))],
                     preferred_companies: [...new Set(liked_jobs.map((j: any) => j.company))],
                     preferred_skills: liked_jobs.flatMap((j: any) => j.skillsMustHave?.length ? j.skillsMustHave : (j.skills || [])),
-                    preferred_locations: [...new Set(liked_jobs.flatMap((j: any) => extractLocations(j.location)))]
+                    preferred_locations: [...new Set(liked_jobs.flatMap((j: any) => extractLocations(getLocationValue(j))))]
                   };
                   console.log('[refine] User preferences extracted from', liked_jobs.length, 'liked jobs');
                 }
@@ -3414,7 +3431,24 @@ export async function POST(request: NextRequest) {
                 score += Math.min(matching_skills.length * 5, 25);
                 
                 // 地点匹配 +10
-                const jobLocations = Array.isArray(job.location) ? job.location : (job.location ? [job.location] : []);
+                // ✅ 修复：兼容 location 字段的各种格式
+                const extractLocationsForJob = (loc: any) => {
+                  if (!loc) return [];
+                  if (typeof loc === 'string') return [loc];
+                  // ✅ 修复：递归处理数组，支持 object[] 如 [{city,state}]
+                  if (Array.isArray(loc)) return loc.flatMap((item: any) => extractLocationsForJob(item));
+                  if (typeof loc === 'object') {
+                    const parts = [loc.city, loc.state, loc.country].filter(Boolean);
+                    return parts.length > 0 ? [parts.join(', ')] : [];
+                  }
+                  return [];
+                };
+                // ✅ 修复：空数组 [] 是 truthy，需要显式检查长度
+                const getJobLocationValue = (j: any) => {
+                  const loc = (Array.isArray(j.locations) && j.locations.length > 0) ? j.locations : j.location;
+                  return extractLocationsForJob(loc);
+                };
+                const jobLocations = getJobLocationValue(job);
                 if (jobLocations.some((loc: string) => preferences.preferred_locations.includes(loc))) score += 10;
                 
                 return { ...job, personalized_score: Math.min(score, 100) };
