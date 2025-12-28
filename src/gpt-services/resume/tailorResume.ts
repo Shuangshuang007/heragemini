@@ -1,7 +1,8 @@
 import OpenAI from 'openai';
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import { createOpenAIClient, chatCompletionsWithFallback } from '../../utils/openaiClient';
 
-const openai = new OpenAI({
+const openai = createOpenAIClient({
   apiKey: process.env.OPENAI_API_KEY,
   baseURL: 'https://api.openai.com/v1',
 });
@@ -67,13 +68,22 @@ Please return a JSON object with:
     { role: 'user', content: `Please tailor this resume for the position:\n\n${resumeContent}` }
   ];
 
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4-turbo',
-    messages,
-    temperature: 0.7,
-    max_tokens: 3000,
-    response_format: { type: "json_object" }
-  });
+  const completion = await chatCompletionsWithFallback(
+    openai,
+    {
+      model: 'gpt-4-turbo',
+      messages,
+      temperature: 0.7,
+      max_tokens: 3000,
+      response_format: { type: "json_object" }
+    },
+    'gemini-2.0-flash-exp'
+  );
+
+  // Type guard: ensure completion is ChatCompletion, not Stream
+  if (!('choices' in completion)) {
+    throw new Error('Unexpected response type: expected ChatCompletion');
+  }
 
   const response = completion.choices[0]?.message?.content;
   

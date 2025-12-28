@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
+import { createOpenAIClient, chatCompletionsWithFallback } from '@/utils/openaiClient';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+const openai = createOpenAIClient({ apiKey: process.env.OPENAI_API_KEY! });
 
 /**
  * @param {Request} request
@@ -17,16 +18,18 @@ export async function POST(request: Request) {
 
   const text = await file.text(); // 支持 txt、docx、pdf 已预解析
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
-    messages: [
-      {
-        role: "system",
-        content: "你是一个结构化简历解析助手，请只返回 JSON，不要添加解释"
-      },
-      {
-        role: "user",
-        content: `
+  const completion = await chatCompletionsWithFallback(
+    openai,
+    {
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: "你是一个结构化简历解析助手，请只返回 JSON，不要添加解释"
+        },
+        {
+          role: "user",
+          content: `
 请你从以下简历中提取信息，格式如下（必须严格 JSON 格式返回）：
 
 {
@@ -48,10 +51,17 @@ export async function POST(request: Request) {
 
 以下是简历内容：
 ${text}`.trim()
-      }
-    ],
-    temperature: 0
-  });
+        }
+      ],
+      temperature: 0
+    },
+    'gemini-2.0-flash-exp'
+  );
+
+  // Type guard: ensure completion is ChatCompletion, not Stream
+  if (!('choices' in completion)) {
+    throw new Error('Unexpected response type: expected ChatCompletion');
+  }
 
   let raw = completion.choices?.[0]?.message?.content || '';
   raw = raw.replace(/```json\s*|```/g, '').trim();

@@ -33,7 +33,9 @@ export interface JobPlanResult {
 // 2. 若未设置，则回退到 OPENAI_API_KEY
 const jobPlanApiKey = process.env.JOB_PLAN_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
 
-const openai = new OpenAI({
+import { createOpenAIClient, chatCompletionsWithFallback } from '../../utils/openaiClient';
+
+const openai = createOpenAIClient({
   apiKey: jobPlanApiKey,
   baseURL: 'https://api.openai.com/v1',
 });
@@ -54,12 +56,14 @@ export async function generateJobPlanFromGPT(profile: UserProfile): Promise<JobP
       skillsCount: profile.skills?.length || 0
     });
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert job search consultant specializing in the Australian job market.
+    const completion = await chatCompletionsWithFallback(
+      openai,
+      {
+        model: 'gpt-4-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert job search consultant specializing in the Australian job market.
 
 Your task is to analyze user profiles and recommend relevant job titles for search.
 
@@ -80,24 +84,41 @@ Your task is to analyze user profiles and recommend relevant job titles for sear
 - Functionally adjacent roles (e.g. Software Engineer → Full Stack Developer → Backend Engineer)
 - Realistic industry transitions (e.g. Investment Banker → M&A Analyst → Private Equity Analyst)
 - Skill-aligned roles based on tech stack, tools, and methodologies`
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 1500,
-      temperature: 0.7,
-    });
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 1500,
+        temperature: 0.7,
+      },
+      'gemini-2.0-flash-exp'
+    );
 
-    const response = completion.choices[0]?.message?.content;
+    // Type guard: ensure completion is ChatCompletion, not Stream
+    if (!('choices' in completion)) {
+      throw new Error('Unexpected response type: expected ChatCompletion');
+    }
+
+    let response = completion.choices[0]?.message?.content;
     
     if (!response) {
       throw new Error('No response from GPT');
     }
 
-    const result = JSON.parse(response) as JobPlanResult;
+    // 清理响应：移除 markdown 代码块标记
+    response = response.replace(/^```json\s*|```$/g, '').trim();
+    
+    // 尝试提取 JSON 部分（如果响应包含其他文本）
+    let jsonText = response;
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      jsonText = jsonMatch[0];
+    }
+
+    const result = JSON.parse(jsonText) as JobPlanResult;
     
     console.log('[JobPlan] GPT response received:', {
       primaryTitles: result.primaryTitles?.length || 0,

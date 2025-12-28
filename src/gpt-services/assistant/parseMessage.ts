@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
+import { createOpenAIClient, chatCompletionsWithFallback } from '../../utils/openaiClient';
 
-const openai = new OpenAI({
+const openai = createOpenAIClient({
   apiKey: process.env.OPENAI_API_KEY,
   baseURL: 'https://api.openai.com/v1',
 });
@@ -18,12 +19,21 @@ export async function parseMessageWithGPT({ message, context, jobContext }: { me
     { role: 'user', content: message }
   ];
 
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo-1106',
-    messages,
-    temperature: 0,
-    max_tokens: 512,
-  });
+  const completion = await chatCompletionsWithFallback(
+    openai,
+    {
+      model: 'gpt-3.5-turbo-1106',
+      messages,
+      temperature: 0,
+      max_tokens: 512,
+    },
+    'gemini-2.0-flash-exp'
+  );
+
+  // Type guard: ensure completion is ChatCompletion, not Stream
+  if (!('choices' in completion)) {
+    throw new Error('Unexpected response type: expected ChatCompletion');
+  }
 
   let response = completion.choices[0].message.content || '';
   response = response.replace(/^```json\s*|```$/g, '').trim();

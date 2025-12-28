@@ -995,8 +995,44 @@ export default function ProfilePage() {
           }
         }
 
-        // 处理其他国家的 work rights
+        // 处理其他国家的 work rights（先去重，确保同一个国家只有一个）
         if (parsedData.otherWorkingRights && Array.isArray(parsedData.otherWorkingRights)) {
+          // 基于国家去重：同一个国家只保留第一个
+          const seenCountries = new Set<string>();
+          const uniqueOtherWorkingRights = parsedData.otherWorkingRights.filter((item: any) => {
+            if (!item || typeof item !== 'object' || !item.country) {
+              return false;
+            }
+            const country = (item.country || '').trim().toLowerCase();
+            if (!country || seenCountries.has(country)) {
+              return false; // 重复的国家，过滤掉
+            }
+            seenCountries.add(country);
+            return true; // 第一个出现的国家，保留
+          });
+          
+          // 清空现有的 otherWorkingRights
+          const currentCount = otherWorkingRightsFields.length;
+          for (let i = 0; i < currentCount; i++) {
+            removeOtherWorkingRights(0);
+          }
+          
+          // 添加去重后的数据
+          uniqueOtherWorkingRights.forEach((item: any) => {
+            if (item.country && item.workingRights) {
+              appendOtherWorkingRights({
+                country: item.country || '',
+                workingRights: item.workingRights || '',
+                status: item.status || '',
+                visaType: item.visaType || ''
+              });
+              appendToTerminal(`✓ Added other country work rights: ${item.country} - ${item.workingRights}`);
+            }
+          });
+        }
+        
+        // 旧代码已删除，使用上面的去重逻辑
+        if (false && parsedData.otherWorkingRights && Array.isArray(parsedData.otherWorkingRights)) {
           parsedData.otherWorkingRights.forEach((item: any) => {
             if (item.country && item.workingRights) {
               appendOtherWorkingRights({
@@ -2041,12 +2077,26 @@ export default function ProfilePage() {
         setValue('careerPriorities', profile.careerPriorities);
       }
       if (profile.otherWorkingRights && Array.isArray(profile.otherWorkingRights)) {
-        // 清空现有字段，然后添加解析出的数据
+        // 先去重：同一个国家只保留第一个
+        const seenCountries = new Set<string>();
+        const uniqueOtherWorkingRights = profile.otherWorkingRights.filter((item: any) => {
+          if (!item || typeof item !== 'object' || !item.country) {
+            return false;
+          }
+          const country = (item.country || '').trim().toLowerCase();
+          if (!country || seenCountries.has(country)) {
+            return false; // 重复的国家，过滤掉
+          }
+          seenCountries.add(country);
+          return true; // 第一个出现的国家，保留
+        });
+        
+        // 清空现有字段，然后添加去重后的数据
         const currentCount = otherWorkingRightsFields.length;
         for (let i = 0; i < currentCount; i++) {
           removeOtherWorkingRights(0);
         }
-        profile.otherWorkingRights.forEach((item: any) => {
+        uniqueOtherWorkingRights.forEach((item: any) => {
           if (item.country && item.workingRights) {
             appendOtherWorkingRights({
               country: item.country || '',

@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import * as mammoth from 'mammoth';
+import { createOpenAIClient, chatCompletionsWithFallback } from '../../utils/openaiClient';
 
 // 添加 API Key 检查函数
 function checkApiKey() {
@@ -11,7 +12,7 @@ function checkApiKey() {
   return apiKey.startsWith('sk-');
 }
 
-const openai = new OpenAI({
+const openai = createOpenAIClient({
   apiKey: process.env.OPENAI_API_KEY_Parse_Resume,
   baseURL: 'https://api.openai.com/v1',
 });
@@ -85,16 +86,18 @@ export async function parseResumeWithGPT(text: string) {
   try {
     console.log('○ Calling OpenAI API to parse resume...');
     // Call OpenAI API to parse resume
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "system",
-          content: "You are a professional resume parser. Your task is to extract **the full list** of work and education experiences from the given resume text. Do not limit the output to the most recent or prominent items — include all relevant entries, even those earlier in time. The resume may contain: - Bullet-point lists - Paragraphs - Tables - Headers like \"Experience\", \"Work History\", \"Education\", \"Academic Background\", etc. - Dates formatted in various ways: \"2023–Present\", \"Feb 2018 – Jan 2022\", \"11/2019–current\", etc. Please note: 1) Dates must be returned in YYYY-MM or YYYY format; 2) For Present, Now, etc., return current year and month; 3) If date doesn't exist, return empty string; 4) Return only JSON, no explanations\n\n**CRITICAL: Name Extraction Rules:**\n- **ALWAYS extract the candidate's full name from the resume**\n- Look for the name at the top of the resume, usually in the header section\n- Common patterns: \"John Smith\", \"J. Smith\", \"Smith, John\", \"John A. Smith\"\n- Split the full name into firstName and lastName\n- For names with middle initials: \"John A. Smith\" → firstName: \"John\", lastName: \"Smith\"\n- For names with prefixes/suffixes: \"Dr. John Smith Jr.\" → firstName: \"John\", lastName: \"Smith\"\n- If the name appears in multiple formats, use the most prominent/complete version\n- **DO NOT leave firstName or lastName empty** unless absolutely no name information is found\n\n**Date Extraction Rules:**\n- For employment and education dates:\n  * If only a year is provided (e.g., '2016'), return just the year as '2016'\n  * If both year and month are provided, return 'YYYY-MM'\n  * Do not guess or fabricate months if not provided\n  * If no date is available, return empty string ''\n\n**CRITICAL: Company Name and Location Parsing Rules:**\n- **Distinguish between \"location mixed into company name\" vs \"company name includes location\"**\n- **Patterns that indicate location mixed into company name:**\n  * Company name ends with city name (Beijing, Shanghai, Melbourne, Sydney)\n  * Company name contains city name in parentheses\n  * Company name follows pattern \"COMPANY + CITY\" where COMPANY is not a known multinational\n  * Resume has separate location field but company name also contains location\n- **Patterns that indicate legitimate company name with location:**\n  * Known multinational subsidiaries (Microsoft Singapore, Google Australia, Apple China)\n  * Company name where location is part of official branding\n  * Company name follows established multinational patterns\n- **Examples:**\n  * \"OCEAN LINK Beijing\" → Separate: company=\"OCEAN LINK\", location=\"Beijing\"\n  * \"Microsoft Singapore\" → Keep together: company=\"Microsoft Singapore\", location=\"\"\n  * \"ZHAOPIN LTD (智联招聘) Beijing\" → Separate: company=\"ZHAOPIN LTD\", location=\"Beijing\"\n  * \"51Talk Beijing\" → Separate: company=\"51Talk\", location=\"Beijing\"\n- **Focus on the resume's original format and context to make this determination**\n\n**School Name Standardization Rules:**\n- Convert school names to Title Case format (first letter of each word capitalized)\n- Examples: \"THE UNIVERSITY OF CHICAGO\" → \"The University of Chicago\"\n- Examples: \"PEKING UNIVERSITY\" → \"Peking University\"\n- Preserve official abbreviations (MIT, UCLA, etc.)\n- Preserve official brand names for business schools\n- Handle multi-language school names properly\n\n**Education Location Parsing Rules:**\n- Extract location information from education entries\n- Look for location in school name (e.g., \"University of Melbourne, Melbourne, Australia\")\n- Look for location in degree description or field of study\n- Look for location mentioned separately in education section\n- Common patterns:\n  * \"University Name, City, Country\"\n  * \"School Name - City\"\n  * \"Degree from University Name (City)\"\n  * \"Field of Study at University Name, Location\"\n- Examples:\n  * \"The University of Chicago Booth School of Business, Chicago, IL\" → location: \"Chicago, IL\"\n  * \"Peking University, Beijing, China\" → location: \"Beijing, China\"\n  * \"Master of Business Administration from Harvard University\" → location: \"Cambridge, MA\"\n  * \"University of Melbourne, Melbourne, Australia\" → location: \"Melbourne, Australia\"\n- If location is not explicitly mentioned, leave as empty string\n- Do not guess or fabricate location information"
-        },
-        {
-          role: "user",
-          content: `
+    const completion = await chatCompletionsWithFallback(
+      openai,
+      {
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "You are a professional resume parser. Your task is to extract **the full list** of work and education experiences from the given resume text. Do not limit the output to the most recent or prominent items — include all relevant entries, even those earlier in time. The resume may contain: - Bullet-point lists - Paragraphs - Tables - Headers like \"Experience\", \"Work History\", \"Education\", \"Academic Background\", etc. - Dates formatted in various ways: \"2023–Present\", \"Feb 2018 – Jan 2022\", \"11/2019–current\", etc. Please note: 1) Dates must be returned in YYYY-MM or YYYY format; 2) For Present, Now, etc., return current year and month; 3) If date doesn't exist, return empty string; 4) Return only JSON, no explanations\n\n**CRITICAL: Name Extraction Rules:**\n- **ALWAYS extract the candidate's full name from the resume**\n- Look for the name at the top of the resume, usually in the header section\n- Common patterns: \"John Smith\", \"J. Smith\", \"Smith, John\", \"John A. Smith\"\n- Split the full name into firstName and lastName\n- For names with middle initials: \"John A. Smith\" → firstName: \"John\", lastName: \"Smith\"\n- For names with prefixes/suffixes: \"Dr. John Smith Jr.\" → firstName: \"John\", lastName: \"Smith\"\n- If the name appears in multiple formats, use the most prominent/complete version\n- **DO NOT leave firstName or lastName empty** unless absolutely no name information is found\n\n**Date Extraction Rules:**\n- For employment and education dates:\n  * If only a year is provided (e.g., '2016'), return just the year as '2016'\n  * If both year and month are provided, return 'YYYY-MM'\n  * Do not guess or fabricate months if not provided\n  * If no date is available, return empty string ''\n\n**CRITICAL: Company Name and Location Parsing Rules:**\n- **Distinguish between \"location mixed into company name\" vs \"company name includes location\"**\n- **Patterns that indicate location mixed into company name:**\n  * Company name ends with city name (Beijing, Shanghai, Melbourne, Sydney)\n  * Company name contains city name in parentheses\n  * Company name follows pattern \"COMPANY + CITY\" where COMPANY is not a known multinational\n  * Resume has separate location field but company name also contains location\n- **Patterns that indicate legitimate company name with location:**\n  * Known multinational subsidiaries (Microsoft Singapore, Google Australia, Apple China)\n  * Company name where location is part of official branding\n  * Company name follows established multinational patterns\n- **Examples:**\n  * \"OCEAN LINK Beijing\" → Separate: company=\"OCEAN LINK\", location=\"Beijing\"\n  * \"Microsoft Singapore\" → Keep together: company=\"Microsoft Singapore\", location=\"\"\n  * \"ZHAOPIN LTD (智联招聘) Beijing\" → Separate: company=\"ZHAOPIN LTD\", location=\"Beijing\"\n  * \"51Talk Beijing\" → Separate: company=\"51Talk\", location=\"Beijing\"\n- **Focus on the resume's original format and context to make this determination**\n\n**School Name Standardization Rules:**\n- Convert school names to Title Case format (first letter of each word capitalized)\n- Examples: \"THE UNIVERSITY OF CHICAGO\" → \"The University of Chicago\"\n- Examples: \"PEKING UNIVERSITY\" → \"Peking University\"\n- Preserve official abbreviations (MIT, UCLA, etc.)\n- Preserve official brand names for business schools\n- Handle multi-language school names properly\n\n**Education Location Parsing Rules:**\n- Extract location information from education entries\n- Look for location in school name (e.g., \"University of Melbourne, Melbourne, Australia\")\n- Look for location in degree description or field of study\n- Look for location mentioned separately in education section\n- Common patterns:\n  * \"University Name, City, Country\"\n  * \"School Name - City\"\n  * \"Degree from University Name (City)\"\n  * \"Field of Study at University Name, Location\"\n- Examples:\n  * \"The University of Chicago Booth School of Business, Chicago, IL\" → location: \"Chicago, IL\"\n  * \"Peking University, Beijing, China\" → location: \"Beijing, China\"\n  * \"Master of Business Administration from Harvard University\" → location: \"Cambridge, MA\"\n  * \"University of Melbourne, Melbourne, Australia\" → location: \"Melbourne, Australia\"\n- If location is not explicitly mentioned, leave as empty string\n- Do not guess or fabricate location information"
+          },
+          {
+            role: "user",
+            content: `
 Please extract information from the following resume in the following format (must return strict JSON format):
 
 {
@@ -247,24 +250,125 @@ Notes:
 Here is the resume content:
 ${text}
           `.trim()
-        }
-      ],
-      temperature: 0
-    });
+          }
+        ],
+        temperature: 0,
+        max_tokens: 8192, // Gemini 最大支持 8192 tokens
+        // 注意：Gemini 可能不支持 response_format，但会在 prompt 中要求返回 JSON
+        response_format: { type: "json_object" } // 尝试使用，如果失败会在 fallback 中处理
+      },
+      'gemini-2.0-flash-exp'
+    );
+    
+    // Type guard: ensure completion is ChatCompletion, not Stream
+    if (!('choices' in completion)) {
+      throw new Error('Unexpected response type: expected ChatCompletion');
+    }
     
     let raw = completion.choices?.[0]?.message?.content || '';
     raw = raw.replace(/^```json\s*|```$/g, '').trim();
-    console.log('✓ Received response from OpenAI API');
-    console.log('Raw response:\n' + raw);
+    console.log('✓ Received response from API');
+    console.log('Raw response length:', raw.length);
+    console.log('Raw response preview (first 500 chars):\n' + raw.substring(0, 500));
 
     try {
-      const parsed = JSON.parse(raw);
+      // 尝试提取 JSON 部分（如果响应包含其他文本）
+      let jsonText = raw;
+      
+      // 如果响应包含 JSON 块，提取它
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonText = jsonMatch[0];
+      }
+      
+      // 检查 JSON 是否完整（以 } 结尾）
+      if (!jsonText.trim().endsWith('}')) {
+        console.warn('⚠️ JSON response may be truncated, attempting to fix...');
+        // 尝试修复不完整的 JSON（添加缺失的闭合括号）
+        const openBraces = (jsonText.match(/\{/g) || []).length;
+        const closeBraces = (jsonText.match(/\}/g) || []).length;
+        const missingBraces = openBraces - closeBraces;
+        if (missingBraces > 0) {
+          jsonText += '\n' + '}'.repeat(missingBraces);
+          console.log(`Added ${missingBraces} closing brace(s) to fix JSON`);
+        }
+      }
+      
+      const parsed = JSON.parse(jsonText);
       console.log('✓ Successfully parsed JSON response');
+      
+      // 只清理乱码字符，不改变数据结构
+      // 清理 workingRights 字段的乱码
+      if (parsed.workingRights) {
+        if (typeof parsed.workingRights === 'string') {
+          parsed.workingRights = parsed.workingRights
+            .replace(/[\x00-\x1F\x7F-\x9F]/g, '') // 移除控制字符
+            .replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, '') // 保留可打印字符和Unicode字符
+            .trim();
+        }
+      }
+      
+      // 清理 otherWorkingRights 数组中的乱码，并确保同一个国家只有一个条目（保留第一个）
+      if (Array.isArray(parsed.otherWorkingRights)) {
+        const seenCountries = new Set<string>();
+        
+        parsed.otherWorkingRights = parsed.otherWorkingRights
+          .map((item: any) => {
+            if (item && typeof item === 'object') {
+              // 清理乱码
+              if (item.workingRights && typeof item.workingRights === 'string') {
+                item.workingRights = item.workingRights
+                  .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+                  .replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, '')
+                  .trim();
+              }
+              if (item.country && typeof item.country === 'string') {
+                item.country = item.country
+                  .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+                  .replace(/[^\x20-\x7E\u00A0-\uFFFF]/g, '')
+                  .trim();
+              }
+              if (item.status && typeof item.status === 'string') {
+                item.status = item.status
+                  .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+                  .trim();
+              }
+              if (item.visaType && typeof item.visaType === 'string') {
+                item.visaType = item.visaType
+                  .replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+                  .trim();
+              }
+              
+              return item;
+            }
+            return null;
+          })
+          .filter((item: any) => {
+            // 过滤掉无效项
+            if (!item || typeof item !== 'object') {
+              return false;
+            }
+            
+            // 基于国家去重：同一个国家只保留第一个
+            const country = (item.country || '').trim().toLowerCase();
+            if (!country) {
+              return true; // 没有国家信息的保留
+            }
+            
+            if (seenCountries.has(country)) {
+              return false; // 重复的国家，过滤掉
+            }
+            
+            seenCountries.add(country);
+            return true; // 第一个出现的国家，保留
+          });
+      }
       
       // Log parsed data details
       console.log(`Found ${parsed.skills?.length || 0} skills`);
       console.log(`Found ${parsed.education?.length || 0} education entries`);
       console.log(`Found ${parsed.employmentHistory?.length || 0} employment entries`);
+      console.log(`Working rights: ${parsed.workingRights || 'not set'}`);
       
       if (parsed.employmentHistory?.length > 0) {
         console.log('Employment history dates:');

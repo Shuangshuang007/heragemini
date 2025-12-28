@@ -1,12 +1,13 @@
 import { OpenAI } from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
+import { createOpenAIClient, chatCompletionsWithFallback } from '@/utils/openaiClient';
 
 // Generate Cover Letter GPT API Key 优先级说明：
 // 1. 优先读取 GENERATE_COVER_LETTER_OPENAI_API_KEY
 // 2. 若未设置，则回退到 OPENAI_API_KEY
 const generateCoverLetterApiKey = process.env.GENERATE_COVER_LETTER_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
 
-const openai = new OpenAI({
+const openai = createOpenAIClient({
   apiKey: generateCoverLetterApiKey,
   baseURL: 'https://api.openai.com/v1',
 });
@@ -68,12 +69,21 @@ Requirements for the cover letter:
 
 Return ONLY the cover letter body content, nothing else.`;
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
-      max_tokens: 800,
-    });
+    const completion = await chatCompletionsWithFallback(
+      openai,
+      {
+        model: 'gpt-4-turbo',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 800,
+      },
+      'gemini-2.0-flash-exp'
+    );
+
+    // Type guard: ensure completion is ChatCompletion, not Stream
+    if (!('choices' in completion)) {
+      throw new Error('Unexpected response type: expected ChatCompletion');
+    }
 
     const coverLetter = completion.choices[0].message.content;
 

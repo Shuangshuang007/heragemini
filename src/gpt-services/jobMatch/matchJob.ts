@@ -1,7 +1,8 @@
 import OpenAI from 'openai';
 import { getLocationWeight } from '../../utils/greaterAreaMap';
+import { createOpenAIClient, chatCompletionsWithFallback } from '../../utils/openaiClient';
 
-const openai = new OpenAI({
+const openai = createOpenAIClient({
   apiKey: process.env.OPENAI_API_KEY,
   baseURL: 'https://api.openai.com/v1',
   defaultHeaders: {
@@ -267,21 +268,25 @@ Return JSON ONLY, no extra text, in this exact format:
   
   for (const model of models) {
     try {
-      completion = await openai.chat.completions.create({
-        model: model,
-        messages: [
-          {
-            role: "system",
-            content: "You are a professional career advisor providing job match analysis and scoring. Always return valid JSON only, no extra text."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        temperature: 0.7,
-        response_format: { type: "json_object" }
-      });
+      completion = await chatCompletionsWithFallback(
+        openai,
+        {
+          model: model,
+          messages: [
+            {
+              role: "system",
+              content: "You are a professional career advisor providing job match analysis and scoring. Always return valid JSON only, no extra text."
+            },
+            {
+              role: "user",
+              content: prompt
+            }
+          ],
+          temperature: 0.7,
+          response_format: { type: "json_object" }
+        },
+        'gemini-2.0-flash-exp' // Gemini fallback model
+      );
       console.log(`[JobMatch] Successfully used model: ${model}`);
       break; // 成功则跳出循环
     } catch (error: any) {
@@ -296,6 +301,11 @@ Return JSON ONLY, no extra text, in this exact format:
   
   if (!completion) {
     throw lastError || new Error('Failed to get completion from any model');
+  }
+
+  // Type guard: ensure completion is ChatCompletion, not Stream
+  if (!('choices' in completion)) {
+    throw new Error('Unexpected response type: expected ChatCompletion');
   }
 
   const response = completion.choices[0].message.content || '';

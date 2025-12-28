@@ -82,7 +82,7 @@ function createJobFingerprint(job: Job): string {
   // 兼容 locations/location/locationRaw
   const rawLoc = (job as any).locations ?? (job as any).location ?? (job as any).locationRaw ?? "";
   const location = normalizeLocation(rawLoc).toLowerCase().trim().replace(/\s+/g, " ");
-
+  
   return `${company}_${title}_${location}`;
 }
 

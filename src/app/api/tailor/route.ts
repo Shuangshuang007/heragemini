@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createOpenAIClient, chatCompletionsWithFallback } from '@/utils/openaiClient';
 
 export async function POST(request: NextRequest) {
   try {
@@ -102,7 +103,7 @@ Instructions:
       model: 'gpt-4.1-mini-2025-04-14', // 改回之前能用的模型
       messages: [
         {
-          role: 'user',
+          role: 'user' as const,
           content: prompt
         }
       ],
@@ -118,34 +119,38 @@ Instructions:
       promptLength: prompt.length
     });
     
-    // 调用 OpenAI API
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.TAILOR_RESUME_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(openaiRequestBody)
+    // 调用 OpenAI API（带 Gemini fallback）
+    const openaiClient = createOpenAIClient({
+      apiKey: process.env.TAILOR_RESUME_API_KEY,
+      baseURL: 'https://api.openai.com/v1',
     });
 
-    if (!openaiResponse.ok) {
-      const errorText = await openaiResponse.text();
-      console.error('🤖 OpenAI API 调用失败:', {
-        status: openaiResponse.status,
-        statusText: openaiResponse.statusText,
-        errorText: errorText.substring(0, 500)
+    let completion;
+    try {
+      completion = await chatCompletionsWithFallback(
+        openaiClient,
+        openaiRequestBody,
+        'gemini-2.0-flash-exp'
+      );
+    } catch (error: any) {
+      console.error('🤖 API 调用失败:', {
+        error: error.message,
+        status: error.status
       });
-      throw new Error(`OpenAI API call failed: ${openaiResponse.status} ${openaiResponse.statusText}`);
+      throw error;
     }
 
-    const openaiData = await openaiResponse.json();
-    const gptResponse = openaiData.choices[0]?.message?.content;
+    // Type guard: ensure completion is ChatCompletion, not Stream
+    if (!('choices' in completion)) {
+      throw new Error('Unexpected response type: expected ChatCompletion');
+    }
+
+    const gptResponse = completion.choices[0]?.message?.content;
     
     // 调试：显示 GPT 响应信息
-    console.log('🤖 GPT 响应状态:', openaiResponse.status);
     console.log('🤖 GPT 响应数据:', {
-      model: openaiData.model,
-      usage: openaiData.usage,
+      model: completion.model,
+      usage: completion.usage,
       responseLength: gptResponse?.length || 0
     });
 
@@ -202,13 +207,9 @@ Instructions:
         // 如果还是失败，重试一次
         const retryPrompt = prompt + '\n\nReturn ONLY the JSON object, no markdown, no comments.';
         
-        const retryResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.TAILOR_RESUME_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
+        const retryCompletion = await chatCompletionsWithFallback(
+          openaiClient,
+          {
             model: 'gpt-4.1-mini', // 重试使用 gpt-4.1-mini
             messages: [
               {
@@ -219,15 +220,16 @@ Instructions:
             temperature: 0.2,
             top_p: 0.9,
             max_tokens: 4000
-          })
-        });
+          },
+          'gemini-2.0-flash-exp'
+        );
 
-        if (!retryResponse.ok) {
-          throw new Error('OpenAI retry API call failed');
+        // Type guard: ensure retryCompletion is ChatCompletion, not Stream
+        if (!('choices' in retryCompletion)) {
+          throw new Error('Unexpected response type: expected ChatCompletion');
         }
 
-        const retryData = await retryResponse.json();
-        const retryGptResponse = retryData.choices[0]?.message?.content;
+        const retryGptResponse = retryCompletion.choices[0]?.message?.content;
 
         if (!retryGptResponse) {
           throw new Error('No response from GPT retry');

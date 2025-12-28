@@ -1,12 +1,13 @@
 import { OpenAI } from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
+import { createOpenAIClient, chatCompletionsWithFallback } from '@/utils/openaiClient';
 
 // Boost Summary GPT API Key 优先级说明：
 // 1. 优先读取 BOOST_SUMMARY_OPENAI_API_KEY
 // 2. 若未设置，则回退到 OPENAI_API_KEY
 const boostSummaryApiKey = process.env.BOOST_SUMMARY_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
 
-const openai = new OpenAI({
+const openai = createOpenAIClient({
   apiKey: boostSummaryApiKey,
   baseURL: 'https://api.openai.com/v1',
 });
@@ -36,11 +37,20 @@ ${summary}
 Please return only the rewritten summary in bullet point format (each bullet point starting with "• " and separated by newlines, no explanations, no additional formatting).
   `.trim();
 
-  const chatResponse = await openai.chat.completions.create({
-    model: 'gpt-4-turbo', // 使用最新的 GPT-4 Turbo 模型
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.7,
-  });
+  const chatResponse = await chatCompletionsWithFallback(
+    openai,
+    {
+      model: 'gpt-4-turbo', // 使用最新的 GPT-4 Turbo 模型
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+    },
+    'gemini-2.0-flash-exp'
+  );
+
+  // Type guard: ensure chatResponse is ChatCompletion, not Stream
+  if (!('choices' in chatResponse)) {
+    throw new Error('Unexpected response type: expected ChatCompletion');
+  }
 
   const boostedSummary = chatResponse.choices[0].message.content;
 

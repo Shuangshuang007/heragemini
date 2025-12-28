@@ -1,7 +1,8 @@
 import OpenAI from 'openai';
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import { createOpenAIClient, chatCompletionsWithFallback } from '../../utils/openaiClient';
 
-const openai = new OpenAI({
+const openai = createOpenAIClient({
   apiKey: process.env.OPENAI_API_KEY,
   baseURL: 'https://api.openai.com/v1',
 });
@@ -39,12 +40,21 @@ export async function getCareerAdvice({
     { role: 'user', content: question }
   ];
 
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
-    messages,
-    temperature: 0.7,
-    max_tokens: 512,
-  });
+  const completion = await chatCompletionsWithFallback(
+    openai,
+    {
+      model: 'gpt-3.5-turbo',
+      messages,
+      temperature: 0.7,
+      max_tokens: 512,
+    },
+    'gemini-2.0-flash-exp' // Gemini fallback model
+  );
+
+  // Type guard: ensure completion is ChatCompletion, not Stream
+  if (!('choices' in completion)) {
+    throw new Error('Unexpected response type: expected ChatCompletion');
+  }
 
   return completion.choices[0].message.content || '';
 } 

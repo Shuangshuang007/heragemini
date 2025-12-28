@@ -1,7 +1,8 @@
 import OpenAI from 'openai';
 import { getLocationWeight } from '../utils/greaterAreaMap';
+import { createOpenAIClient, chatCompletionsWithFallback } from '../utils/openaiClient';
 
-const openai = new OpenAI({
+const openai = createOpenAIClient({
   apiKey: process.env.OPENAI_API_KEY,
   baseURL: 'https://api.openai.com/v1',
 });
@@ -135,12 +136,16 @@ ANALYSIS:
   
   for (const model of models) {
     try {
-      completion = await openai.chat.completions.create({
-        model: model,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: userProfile ? 1500 : 500,
-        temperature: 0.7,
-      });
+      completion = await chatCompletionsWithFallback(
+        openai,
+        {
+          model: model,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: userProfile ? 1500 : 500,
+          temperature: 0.7,
+        },
+        'gemini-2.0-flash-exp' // Gemini fallback model
+      );
       console.log(`[JobAnalysis] Successfully used model: ${model}`);
       break; // 成功则跳出循环
     } catch (error: any) {
@@ -155,6 +160,11 @@ ANALYSIS:
   
   if (!completion) {
     throw lastError || new Error('Failed to get completion from any model');
+  }
+
+  // Type guard: ensure completion is ChatCompletion, not Stream
+  if (!('choices' in completion)) {
+    throw new Error('Unexpected response type: expected ChatCompletion');
   }
 
   const response = completion.choices[0]?.message?.content || '';

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
+import { createOpenAIClient, chatCompletionsWithFallback } from '@/utils/openaiClient';
 
-const openai = new OpenAI({
+const openai = createOpenAIClient({
   apiKey: process.env.BOOST_SUMMARY_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
 });
 
@@ -69,19 +70,23 @@ export async function POST(req: NextRequest) {
 
   for (const model of models) {
     try {
-      resp = await openai.chat.completions.create({
-        model,
-        temperature: 0.3,
-        top_p: 0.9,
-        presence_penalty: 0.6,
-        frequency_penalty: 0.5,
-        n: 1,
-        max_tokens: 160,
-        messages: [
-          { role: 'system', content: SYSTEM },
-          { role: 'user', content: buildUserPrompt(resumeData, currentHighlights || undefined) },
-        ],
-      });
+      resp = await chatCompletionsWithFallback(
+        openai,
+        {
+          model,
+          temperature: 0.3,
+          top_p: 0.9,
+          presence_penalty: 0.6,
+          frequency_penalty: 0.5,
+          n: 1,
+          max_tokens: 160,
+          messages: [
+            { role: 'system', content: SYSTEM },
+            { role: 'user', content: buildUserPrompt(resumeData, currentHighlights || undefined) },
+          ],
+        },
+        'gemini-2.0-flash-exp'
+      );
       break;
     } catch (e) {
       lastErr = e;
@@ -89,6 +94,11 @@ export async function POST(req: NextRequest) {
   }
 
   if (!resp) throw lastErr ?? new Error('No completion');
+
+  // Type guard: ensure resp is ChatCompletion, not Stream
+  if (!('choices' in resp)) {
+    throw new Error('Unexpected response type: expected ChatCompletion');
+  }
 
   const text = resp.choices[0]?.message?.content?.trim() || '';
 
@@ -104,12 +114,20 @@ Return only the two-sentence paragraph.
 Text:
 ${input}
     `.trim();
-    const r = await openai.chat.completions.create({
-      model: models[1] || 'gpt-4.1-mini',
-      temperature: 0.2,
-      max_tokens: 160,
-      messages: [{ role: 'user', content: prompt }],
-    });
+    const r = await chatCompletionsWithFallback(
+      openai,
+      {
+        model: models[1] || 'gpt-4.1-mini',
+        temperature: 0.2,
+        max_tokens: 160,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      'gemini-2.0-flash-exp'
+    );
+    // Type guard: ensure r is ChatCompletion, not Stream
+    if (!('choices' in r)) {
+      throw new Error('Unexpected response type: expected ChatCompletion');
+    }
     return (r.choices[0].message?.content || '').trim();
   }
 
