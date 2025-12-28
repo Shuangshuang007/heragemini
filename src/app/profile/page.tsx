@@ -880,9 +880,20 @@ export default function ProfilePage() {
         
         if (parsedData.city) {
           const normalizedCity = normalizeCity(parsedData.city);
-          setValue('city', normalizedCity);
-          localStorage.setItem("city", normalizedCity);
-          appendToTerminal(`✓ Set city: ${normalizedCity}`);
+          // 获取当前国家（可能已经设置或推断）
+          const currentCountry = watch('country') || parsedData.country || 'Australia';
+          // 尝试匹配完整的城市选项（包含州）
+          const cityOptions = cityOptionsMap[currentCountry as CountryKey] || [];
+          const matchedCity = cityOptions.find(opt => {
+            const cityName = opt.value.split(',')[0].trim(); // 提取城市名（去掉州）
+            return cityName.toLowerCase() === normalizedCity.toLowerCase();
+          });
+          
+          // 如果找到匹配的城市选项，使用完整的值（包含州）
+          const finalCity = matchedCity ? matchedCity.value : normalizedCity;
+          setValue('city', finalCity);
+          localStorage.setItem("city", finalCity);
+          appendToTerminal(`✓ Set city: ${finalCity}`);
         }
 
         // 处理职位和技能

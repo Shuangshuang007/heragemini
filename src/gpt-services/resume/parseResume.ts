@@ -281,6 +281,74 @@ ${text}
         jsonText = jsonMatch[0];
       }
       
+      // Gemini 可能返回未转义的换行符，需要修复
+      // 在字符串值中，将实际的换行符转义为 \\n
+      // 使用正则表达式匹配 JSON 字符串值中的换行符
+      jsonText = jsonText.replace(/: "([^"]*)"([,\n}])/g, (match, content, suffix) => {
+        // 如果内容包含未转义的换行符，转义它们
+        if (content.includes('\n') && !content.includes('\\n')) {
+          const escaped = content.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+          return `: "${escaped}"${suffix}`;
+        }
+        return match;
+      });
+      
+      // 处理多行字符串值（更健壮的方法）
+      // 匹配 ": "..." 格式的字符串值，包括跨行的
+      jsonText = jsonText.replace(/: "([^"]*(?:"[^",}\]]*)*)"([,\n}])/g, (match, content, suffix) => {
+        // 检查是否有未转义的换行符
+        if (content.match(/(?<!\\)\n/)) {
+          const escaped = content
+            .replace(/\\(?!["\\/bfnrt])/g, '\\\\') // 转义反斜杠（除了已转义的）
+            .replace(/\n/g, '\\n')
+            .replace(/\r/g, '\\r')
+            .replace(/\t/g, '\\t');
+          return `: "${escaped}"${suffix}`;
+        }
+        return match;
+      });
+      
+      // 更简单但更可靠的方法：使用状态机修复字符串值中的换行符
+      let fixedJson = '';
+      let inString = false;
+      let escapeNext = false;
+      
+      for (let i = 0; i < jsonText.length; i++) {
+        const char = jsonText[i];
+        const nextChar = jsonText[i + 1];
+        
+        if (escapeNext) {
+          fixedJson += char;
+          escapeNext = false;
+          continue;
+        }
+        
+        if (char === '\\') {
+          fixedJson += char;
+          escapeNext = true;
+          continue;
+        }
+        
+        if (char === '"' && !escapeNext) {
+          inString = !inString;
+          fixedJson += char;
+          continue;
+        }
+        
+        if (inString && char === '\n') {
+          // 在字符串值中，将换行符转义
+          fixedJson += '\\n';
+        } else if (inString && char === '\r') {
+          fixedJson += '\\r';
+        } else if (inString && char === '\t') {
+          fixedJson += '\\t';
+        } else {
+          fixedJson += char;
+        }
+      }
+      
+      jsonText = fixedJson;
+      
       // 检查 JSON 是否完整（以 } 结尾）
       if (!jsonText.trim().endsWith('}')) {
         console.warn('⚠️ JSON response may be truncated, attempting to fix...');
