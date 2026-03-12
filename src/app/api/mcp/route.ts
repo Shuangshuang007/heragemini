@@ -139,7 +139,15 @@ function buildJobSnapshotFromJob(job: { id?: string; title?: string; company?: s
 // ============================================
 function requireMcpAuth(request: NextRequest): { authorized: boolean; error?: Response } {
   const authHeader = request.headers.get('authorization');
-  
+  const hasAuth = !!authHeader;
+  const bearerValid = hasAuth && authHeader.startsWith('Bearer ');
+  const receivedLen = bearerValid ? authHeader.length - 7 : 0;
+  const expectedSecret = process.env.MCP_SHARED_SECRET;
+  const expectedExists = !!expectedSecret;
+  const expectedLen = (expectedSecret || '').length;
+  // Temporary auth debug (no plaintext token)
+  console.log('[MCP auth] request has auth header:', hasAuth ? 'yes' : 'no', '| bearer prefix valid:', bearerValid ? 'yes' : 'no', '| received token length:', receivedLen, '| env token exists:', expectedExists ? 'yes' : 'no', '| env token length:', expectedLen);
+
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return {
       authorized: false,
