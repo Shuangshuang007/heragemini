@@ -3655,9 +3655,9 @@ export async function POST(request: NextRequest) {
               page: 1,
               pageSize: searchLimit,
               excludeIds: Array.from(EXCLUDE_SET).slice(-2000),
+              ...(workMode != null && workMode !== '' ? { workMode } : {}),
+              ...(employmentType != null && employmentType !== '' ? { employmentType } : {}),
             };
-            if (workMode != null && workMode !== '') queryOptions.workMode = workMode;
-            if (employmentType != null && employmentType !== '') queryOptions.employmentType = employmentType;
             const { jobs: candidates } = await queryJobsWithFilters(queryOptions);
             
             console.log(`[refine] Found ${candidates.length} candidates after excluding ${EXCLUDE_SET.size}`);
