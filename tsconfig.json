@@ -52,6 +52,7 @@
     ".next",
     "out",
     "build",
-    "dist"
+    "dist",
+    "docs/backups"
   ]
 }
