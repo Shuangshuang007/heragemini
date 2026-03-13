@@ -1248,16 +1248,16 @@ export async function POST(request: NextRequest) {
               },
               limit: {
                 type: "integer",
-                default: 50,
+                default: 20,
                 minimum: 5,
-                maximum: 100,
-                description: "Requested max jobs. Actual count is capped by profile stage: recommendable (job_title/city only) → up to 10; enhanced (+ skills or experience) → up to 50; auto_apply_ready (+ employmentHistory) → up to 100. Response meta includes profile_stage."
+                maximum: 50,
+                description: "Requested max jobs (default 20). Actual count is capped by profile stage: recommendable (job_title/city only) → up to 10; enhanced (+ skills or experience) and auto_apply_ready (+ employmentHistory) → up to 50. Response meta includes profile_stage."
               },
               page_size: {
                 type: "integer",
                 minimum: 10,
-                maximum: 100,
-                description: "Optional. Max jobs to return in this batch (one-shot card display). Pass 50 or 100 so Manus can render all cards at once. Still capped by profile stage (recommendable max 10, enhanced max 50, auto_apply_ready max 100). When provided, effective count = min(profile_stage_limit, page_size)."
+                maximum: 50,
+                description: "Optional. Max jobs in this batch (default uses limit). When provided, effective count = min(profile_stage_limit, page_size). Capped at 50 (recommendable max 10, enhanced/auto_apply_ready max 50)."
               },
               use_chat_context: {
                 type: "boolean",
@@ -1272,7 +1272,7 @@ export async function POST(request: NextRequest) {
               source: {
                 type: "string",
                 enum: ["manus", "gpt", "hera_web"],
-                description: "Caller: 'manus' | 'gpt' | 'hera_web'. hera_web gets up to 500. Result count 10/50/100 is by profile completeness (see limit description)."
+                description: "Caller: 'manus' | 'gpt' | 'hera_web'. hera_web gets up to 500. Result count 10/50 is by profile (recommendable 10, enhanced/auto_apply_ready 50)."
               },
               industry: { type: "string", description: "Optional. Filter by job industry (e.g. Technology, Finance)." },
               skills: { type: "array", items: { type: "string" }, description: "Optional. Filter jobs that have any of these skills in topSkills/skillsMust/skillsNice." },
@@ -2962,8 +2962,8 @@ export async function POST(request: NextRequest) {
             user_profile = {}, 
             job_title, 
             city, 
-            limit = 50, 
-            page_size: pageSizeArg,  // 可选，本批最多返回条数（一次性展示 50/100 用）
+            limit = 20, 
+            page_size: pageSizeArg,  // 可选，本批最多返回条数，上限 50
             use_chat_context = true, 
             strict_filters = true,
             session_id,      // Phase 2: 用于后台统计
@@ -2978,13 +2978,12 @@ export async function POST(request: NextRequest) {
             employmentTypeStrict,
             sponsorship_only,
             company: companyArg,
-            manus = true,  // 默认 true：每条 job_cards 含 job_detail，供 Manus 渲染详情卡
+            manus = true,  // 默认 true：job_cards 仅 list 层，详情用 get_job_detail(job_id)
           } = args;
           // Caller: args.source takes precedence; else X-Caller header (for Manus Customer API); else 'gpt'
           const effectiveCaller = (argsSource || request.headers.get('x-caller')?.toLowerCase() || 'gpt').toLowerCase();
-          // Staged profile: recommendable (10) → enhanced_recommendation (50) → auto_apply_ready (100)
-          // Basic: job title + city → 10 (recent 1 batch by match score).
-          // Enhanced: job title + city + (experience OR skills any one) → 50, same method: recent 2 batches, by match score top 50.
+          // Staged profile: recommendable (10) → enhanced_recommendation (50) → auto_apply_ready (50). Default limit 20, max 50.
+          // Basic: job title + city → up to 10. Enhanced / auto_apply_ready → up to 50.
           const hasSearchCriteria = !!(job_title || city || user_profile?.jobTitles?.length || user_profile?.expectedPosition || user_profile?.city);
           const hasExperience = !!(user_profile?.employmentHistory?.length || user_profile?.currentPosition || user_profile?.seniority);
           const hasSkills = !!(user_profile?.skills?.length);
@@ -2996,9 +2995,9 @@ export async function POST(request: NextRequest) {
           else if (hasSearchCriteria) profileStage = 'recommendable';
           // Advanced / web mode: up to 500 (hera_web only)
           const isAdvancedMode = effectiveCaller === 'hera_web';
-          const stageLimit = profileStage === 'auto_apply_ready' ? 100 : profileStage === 'enhanced_recommendation' ? 50 : 10;
-          // page_size：本批希望返回的最大条数（Manus 一次性展示 50/100 用）；未传则用 limit；仍受 profile 阶段上限约束
-          const requestedMax = pageSizeArg != null ? Math.min(100, Math.max(10, Number(pageSizeArg))) : limit;
+          const stageLimit = profileStage === 'auto_apply_ready' ? 50 : profileStage === 'enhanced_recommendation' ? 50 : 10;
+          // page_size：本批希望返回的最大条数；未传则用 limit；上限 50，仍受 profile 阶段约束
+          const requestedMax = pageSizeArg != null ? Math.min(50, Math.max(10, Number(pageSizeArg))) : limit;
           const effectiveLimit = isAdvancedMode ? Math.min(Math.max(limit, 1), 500) : Math.min(stageLimit, requestedMax);
           
           console.log('[MCP] recommend_jobs - exclude_ids:', exclude_ids.length);
@@ -3388,9 +3387,9 @@ export async function POST(request: NextRequest) {
             const next_actions: string[] = [];
             if (profileStage === 'recommendable') {
               next_actions.push('Add experience or skills for more recommendations (up to 50)');
-              next_actions.push('Add employment history for auto-apply readiness (up to 100)');
+              next_actions.push('Add employment history for auto-apply readiness (up to 50)');
             } else if (profileStage === 'enhanced_recommendation') {
-              next_actions.push('Add employment history to enable auto-apply (up to 100 jobs)');
+              next_actions.push('Add employment history to enable auto-apply (up to 50 jobs)');
             } else {
               next_actions.push('Use prepare_application_context when you select jobs to apply');
             }
