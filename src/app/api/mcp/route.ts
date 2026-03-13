@@ -352,9 +352,9 @@ function scoreJobForRecommend(job: any, params: {
   return score;
 }
 
-// 带Highlights和View Details链接的卡片（ChatGPT支持Markdown链接，参考 recommend_jobs 的格式）
+// 带Highlights和View Details链接的卡片（返回多少就展示多少，不再固定 5 条；profile 已决定 10/50/100）
 function buildMarkdownCards(q: { title: string; city: string }, jobs: any[], total: number) {
-  const cards = jobs.slice(0, 5).map((j: any, idx: number) => {
+  const cards = jobs.map((j: any, idx: number) => {
     const title = (j.title || "").replace(/[–—]/g, "-").trim();
     const company = (j.company || "").trim();
     const loc = (j.location || "").trim();
@@ -469,8 +469,6 @@ function buildMarkdownCards(q: { title: string; city: string }, jobs: any[], tot
     `Found ${total} jobs for "${q.title}" in ${q.city}`,
     "",
     cards.join("\n\n"),
-    "",
-    `Reply "more" for next 5 results.`,
   ].join("\n");
 }
 
