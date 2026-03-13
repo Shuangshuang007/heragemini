@@ -47,12 +47,14 @@
 
 ### 3. 后端与 MCP
 
-- **upsertJobApplication**：支持上述所有字段（含 `appliedVia`、`hiringStatus`、`applicationStartedBy`）。
-- **GET /api/profile/upsert-application**：主站用，Body 支持 `applicationStatus`、`appliedVia`、`hiringStatus`、`applicationStartedBy`。
+- **upsertJobApplication**：支持上述所有字段（含 `appliedVia`、`hiringStatus`、`applicationStartedBy`、`excluded`、`jobUrl`、`failureReason`）。
+- **GET /api/profile/upsert-application**：主站用，Body 支持 `applicationStatus`、`appliedVia`、`hiringStatus`、`applicationStartedBy` 等。
 - **MCP**：  
+  - **recommend_jobs / search_jobs / refine_recommendations**：第一轮只返回**列表层**（`result.job_cards[].card`，与主站 Job List 同维度），不含完整 job_detail；refine 默认每轮最多 50 条，传上一轮 `meta.returned_job_ids` 作 `exclude_ids` 取下一批。  
+  - **get_job_detail**：按 `job_id` 返回该职位完整详情（`result.job_detail`，与主站详情页一致）。若传 `user_email`，同时将该职位写入 profile.applications（show more = 兴趣），主站 Applications 可见；仅用户明确「不要 #x」时通过 refine 的 `disliked_job_ids` 排除。  
   - `get_user_applications`：返回该用户的 `profile.applications`（含上述新字段）。  
-  - `prepare_application_context`：按 `user_email` + `job_id`（或 application_id）返回职位与用户上下文、resume_url 等，供 Manus 发起申请；**当前未**在 prepare 时写入 `applicationStartedBy`，可后续增加。  
-  - `record_apply_result`：**仅在 tools 列表中有名称与描述，handler 尚未实现**；计划由 Manus 在投递结束时调用，写入 `applicationStatus` + `appliedVia: 'manus'`。
+  - `prepare_application_context`：按 `user_email` + `job_id`（或 application_id）返回职位与用户上下文、resume_url 等，并写入 `applicationStartedBy: 'manus'`。  
+  - `record_apply_result`：已实现；Manus 在投递结束时调用，写入 `applicationStatus`、`appliedVia: 'manus'`、可选 `failure_reason`。
 
 ---
 
@@ -62,7 +64,8 @@
 
 | 用户行为 / 时机 | 建议 Manus 调用 | 写入/更新字段 | 在主站 Applications 页的体现 |
 |-----------------|-----------------|----------------|------------------------------|
-| 用户表达兴趣（如「show me more #3」「show details of #5」） | 使用现有 **refine_recommendations**（liked_job_ids / liked_indexes）；可选：新增「记录兴趣」类接口 | 若 Hera 将「兴趣」视为 JobSaved：则 upsert 一条 application，仅设 `jobSave: { title, company }`（或再标记为「感兴趣」状态） | 出现一行该职位；Start Application 仍为橙色，直至「开始申请」被回传 |
+| 用户要看某条详情（「show me more about #3」「tell me more」） | **get_job_detail**（`job_id`，可选 `user_email`） | 传 `user_email` 时 Hera 会 upsert 该职位到 profile.applications（jobSave、jobUrl），视为兴趣 | 主站 Applications 出现该行；返回的 `job_detail` 供 Manus 展示详情 |
+| 用户表达兴趣或选定要投（不一定要拉详情） | **refine_recommendations**（liked_job_ids / liked_indexes） | upsert 到 profile.applications，仅设 `jobSave`、`jobUrl` | 出现一行该职位；Start Application 仍为橙色，直至「开始申请」被回传 |
 | 用户明确「先投 A 再投 B」等（选定要投的职位） | 同上或专用「记录选定申请」接口 | 同上，确保这些 job_id 在 profile.applications 中有记录（jobSave） | 同上 |
 | 用户明确不要某职位（排除） | 使用 **refine_recommendations** 的 disliked；**待确认**：是否需要在 Applications 支持「删除」 | **待确认**：Hera 是否从 profile.applications 中删除该条，或仅标记「已排除」 | 若支持删除，则主站该行可移除或置灰 |
 | 开始对某职位执行申请（含 bulk 中每一个） | **prepare_application_context** 或新接口「记录开始申请」 | `applicationStartedBy: 'manus'`（及 jobSave 若尚无） | 该行「Start Application」变为绿色「Application Started」 |
@@ -76,12 +79,13 @@
 ## 三、用户流程简述（从表达到投递完成）
 
 1. **首次搜索 / 推荐**  
-   - Manus 调 **recommend_jobs**（或 search_jobs），Hera 返回 job list + job details。  
-   - 后续推荐可调 **refine_recommendations**（exclude_ids、liked/disliked），用于「show me more」「show details of #x」等；这些行为在 Hera 侧会用于 refine 逻辑与偏好记录。
+   - Manus 调 **recommend_jobs**（或 search_jobs、refine_recommendations），Hera 第一轮只返回**列表层**（`job_cards[].card`，与主站 Job List 同维度），不含完整 job_detail。  
+   - 「Show me more」时 Manus 调 **get_job_detail**（`job_id`，可选 `user_email`）拉取该条完整详情；若传 `user_email`，该职位会写入 profile.applications（兴趣）。  
+   - 后续「更多职位」可调 **refine_recommendations**（`exclude_ids` 为上一轮 `meta.returned_job_ids`，默认最多 50 条）；liked/disliked 仍通过 refine 传，用于偏好与排除。
 
 2. **表达兴趣 → 视为 JobSaved**  
-   - 用户说「show me more #3」「show details of #5」：建议 Manus 用 **refine_recommendations** 传 liked_job_ids / liked_indexes。  
-   - Hera 可将这些「感兴趣」的 job_id 视为 JobSaved：即对每个 such job_id 做一次 upsert 到 profile.applications（仅 jobSave，无 applicationStartedBy）。  
+   - 用户说「show me more #3」要**看详情**：Manus 调 **get_job_detail**（job_id, user_email），即拉详情又记入 Applications。  
+   - 用户只说「我喜欢 #2、#5」或选定要投、不一定要详情：Manus 用 **refine_recommendations** 传 liked_job_ids / liked_indexes，Hera 做 upsert 到 profile.applications（jobSave、jobUrl）。  
    - **待 Manus 确认**：是否同意「兴趣 = JobSaved」且由 Hera 在 refine 或单独接口中写 application；以及「用户明确不要」时是否需要在 Applications 支持删除。
 
 3. **选定要投的职位（含「先投 A 再投 B」）**  

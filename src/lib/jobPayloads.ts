@@ -1,10 +1,8 @@
 /**
  * Shared job list/detail payload builders for MCP and main site.
  * Single source of truth: list = first-round payload (aligned with main site Job List);
- * detail = full job (aligned with main site Job Detail / GET /api/jobs/[id]).
+ * detail = exactly what JobDetailPanel displays (one module, panel and Manus identical).
  */
-
-import type { Job } from '@/types/job';
 
 // ----- List layer (first round: recommend / refine / search) -----
 // Aligned with main site JobSummaryCard and buildMarkdownCards list view.
@@ -98,50 +96,66 @@ export function buildJobListPayload(job: any): JobListPayload {
 }
 
 // ----- Detail layer (on-demand: show more / get_job_detail) -----
-// Same shape as main site Job and GET /api/jobs/[id] response.
+// Exactly what JobDetailPanel displays. No description (panel does not show it).
+// Single source of truth: GET /api/jobs/[id] and MCP get_job_detail both use buildJobDetailPayload.
 
-export type JobDetailPayload = Job;
+export interface JobDetailPayload {
+  id: string;
+  title: string;
+  company: string;
+  location: string | string[];
+  postedDate?: string;
+  url: string;
+  highlights: string[];
+  matchScore?: number;
+  subScores?: { experience?: number; industry?: number; skills?: number; other?: number };
+  summary?: string;
+  workMode?: string;
+  salary?: string;
+  skillsMustHave: string[];
+  skillsNiceToHave: string[];
+  keyRequirements: string[];
+  workRights?: {
+    requiresStatus?: string;
+    sponsorship?: string;
+    country?: string;
+    citizenshipRequired?: boolean;
+  };
+}
 
 /**
- * Build detail payload from a job already in frontend format (e.g. from transformMongoDBJobToFrontendFormat
- * or from recommend pipeline). Main site GET /api/jobs/[id] returns this shape.
- * Use for get_job_detail MCP tool and any "show more" response.
+ * Build detail payload from a job (frontend format or DB). Only fields that JobDetailPanel uses.
+ * Used by GET /api/jobs/[id] and MCP get_job_detail so main site and Manus receive identical shape.
  */
 export function buildJobDetailPayload(job: any): JobDetailPayload | null {
   if (!job) return null;
   const id = job.id ?? job.jobIdentifier ?? job?._id?.toString?.();
   if (!id) return null;
 
+  const loc = job.location ?? job.locationRaw ?? job.locations;
+  const location =
+    Array.isArray(loc) && loc.length > 0
+      ? loc
+      : typeof loc === 'string'
+        ? loc
+        : locationToString(loc);
+
   return {
     id: String(id),
     title: toString(job.title),
     company: toString(job.company ?? job.company_name),
-    location: job.location ?? locationToString(job.locationRaw ?? job.locations),
-    description: job.description,
-    salary: job.salary,
-    requirements: toArray(job.requirements),
-    benefits: toArray(job.benefits),
-    jobType: job.jobType,
-    employmentType: job.employmentType ?? job.employment_type,
-    workMode: job.workMode,
-    experience: job.experience,
-    postedDate: job.postedDate ?? job.postedDateRaw,
-    platform: toString(job.platform ?? job.source),
-    url: job.url ?? job.jobUrl ?? '',
-    experienceTag: job.experienceTag,
+    location,
+    postedDate: job.postedDate ?? job.postedDateRaw ?? undefined,
+    url: toString(job.url ?? job.jobUrl ?? ''),
+    highlights: toArray(job.highlights),
+    matchScore: typeof job.matchScore === 'number' ? job.matchScore : undefined,
+    subScores: job.subScores && typeof job.subScores === 'object' ? job.subScores : undefined,
+    summary: job.summary != null ? String(job.summary).trim() : undefined,
+    workMode: job.workMode != null ? String(job.workMode).trim() : undefined,
+    salary: job.salary != null ? String(job.salary).trim() : undefined,
     skillsMustHave: toArray(job.skillsMustHave ?? job.skillsMust),
     skillsNiceToHave: toArray(job.skillsNiceToHave ?? job.skillsNice),
-    highlights: toArray(job.highlights),
     keyRequirements: toArray(job.keyRequirements),
     workRights: job.workRights ?? undefined,
-    tags: Array.isArray(job.tags) ? job.tags : [],
-    skills: toArray(job.skills),
-    matchScore: typeof job.matchScore === 'number' ? job.matchScore : undefined,
-    subScores: job.subScores ?? undefined,
-    matchAnalysis: job.matchAnalysis,
-    matchHighlights: Array.isArray(job.matchHighlights) ? job.matchHighlights : [],
-    summary: job.summary,
-    detailedSummary: job.detailedSummary,
-    industry: job.industry,
-  } as JobDetailPayload;
+  };
 }

@@ -17,7 +17,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchJobs } from '../../../services/jobFetchService';
 import { getUserProfile, upsertUserProfile, upsertJobApplication } from '../../../services/profileDatabaseService';
-import { connectToMongoDB, getJobById, queryJobsByIds, queryJobsWithFilters, transformMongoDBJobToFrontendFormat } from '../../../services/jobDatabaseService';
+import { connectToMongoDB, getJobById, queryJobsByIds, queryJobsWithFilters, transformMongoDBJobToFrontendFormat, updateJobFields } from '../../../services/jobDatabaseService';
+import { needsJobAnalysis, analyzeJobWithGPT } from '../../../services/jobAnalysisService';
 import { buildJobListPayload, buildJobDetailPayload } from '@/lib/jobPayloads';
 import { parseMessageWithGPT } from '../../../gpt-services/assistant/parseMessage';
 import { tailorResumeWithGPT } from '../../../gpt-services/resume/tailorResume';
@@ -3820,7 +3821,7 @@ export async function POST(request: NextRequest) {
               };
               const withAppScore = scored.map((j: any) => ({ job: j, appScore: scoreJobForRecommend(j, scoreParams) }));
               withAppScore.sort((a: { appScore: number }, b: { appScore: number }) => b.appScore - a.appScore);
-              scored = withAppScore.map((x: { job: any }) => x.job);
+              scored = withAppScore.map((x: { job: any; appScore: number }) => ({ ...x.job, matchScore: x.appScore }));
               console.log('[refine] Applied profile/constraint scoring (same as recommend_jobs)');
             }
             
@@ -3874,11 +3875,12 @@ export async function POST(request: NextRequest) {
               console.log('[refine] Applied preference scoring');
             }
             
-            // 转换并做指纹去重（公司+标题+地点），再截取前 N 条
+            // 转换并做指纹去重（公司+标题+地点），再截取前 N 条；保留 matchScore（约束打分或偏好打分的 personalized_score）
             let transformed = scored.map((job: any) => {
               const out = transformMongoDBJobToFrontendFormat(job);
-              if (out && (job as any).personalized_score) {
-                (out as any).personalized_score = (job as any).personalized_score;
+              if (out) {
+                const score = (job as any).matchScore ?? (job as any).personalized_score;
+                if (typeof score === 'number') (out as any).matchScore = score;
               }
               return out;
             }).filter((j: any) => j);
@@ -5428,7 +5430,28 @@ export async function POST(request: NextRequest) {
                 }
               }, { "X-MCP-Trace-Id": traceId });
             }
-            const frontendJob = transformMongoDBJobToFrontendFormat(jobDoc);
+            const baseJob = (jobDoc as any).id
+              ? jobDoc
+              : { ...jobDoc, id: (jobDoc as any).jobIdentifier || (jobDoc as any)._id?.toString?.() || jobId };
+            let enrichedJob: any = baseJob;
+            if (userEmail) {
+              const userProfile = await getUserProfile(userEmail).catch(() => null);
+              if (needsJobAnalysis(baseJob)) {
+                try {
+                  const cityHint = (baseJob as any).city || (Array.isArray((baseJob as any).location) ? (baseJob as any).location[0] : (baseJob as any).location) || '';
+                  const analysis = await analyzeJobWithGPT(baseJob, cityHint, userProfile);
+                  enrichedJob = {
+                    ...baseJob,
+                    ...analysis,
+                    highlights: (baseJob as any).highlights || [],
+                  };
+                  await updateJobFields(jobId, analysis).catch((e) => console.warn("[get_job_detail] updateJobFields failed:", (e as Error)?.message));
+                } catch (e) {
+                  console.warn("[get_job_detail] analyzeJobWithGPT failed (non-blocking):", (e as Error)?.message);
+                }
+              }
+            }
+            const frontendJob = transformMongoDBJobToFrontendFormat(enrichedJob);
             if (!frontendJob) {
               return json200({
                 jsonrpc: "2.0",

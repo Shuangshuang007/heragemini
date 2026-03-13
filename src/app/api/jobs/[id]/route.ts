@@ -5,6 +5,7 @@ import {
   updateJobFields,
   transformMongoDBJobToFrontendFormat,
 } from '../../../../services/jobDatabaseService';
+import { buildJobDetailPayload } from '../../../../lib/jobPayloads';
 
 interface RouteParams {
   params: Promise<{
@@ -121,9 +122,15 @@ export async function GET(_request: NextRequest, context: RouteParams) {
       return NextResponse.json({ error: 'Failed to transform job' }, { status: 500 });
     }
 
+    const job = buildJobDetailPayload(frontendJob);
+    if (!job) {
+      console.error(`[JobDetail] Failed to build detail payload: ${jobId}`);
+      return NextResponse.json({ error: 'Failed to build job detail' }, { status: 500 });
+    }
+
     const duration = Date.now() - startTime;
     console.log(`[JobDetail] GET /api/jobs/${jobId} - Completed in ${duration}ms`);
-    return NextResponse.json({ job: frontendJob });
+    return NextResponse.json({ job });
   } catch (error: any) {
     const duration = Date.now() - startTime;
     console.error(`[JobDetail] GET /api/jobs/${jobId} - Error after ${duration}ms:`, error.message);

@@ -14,18 +14,27 @@
 
 ---
 
-## 2. 与 Applications 相关的工具与调用时机
+## 2. 职位列表与详情（第一轮仅列表层，按需拉详情）
 
-| 时机 | 工具 | 要点 |
-|------|------|------|
-| 用户说「show me more #3」「show details of #5」或选定要投的职位 | **refine_recommendations** | 传 `user_email` + `liked_job_ids` 或 `liked_indexes`（1-based）。Hera 会把这些 job 写入 profile.applications（JobSaved），并用于后续推荐。 |
-| 用户说「不要 #x」「排除 #x」 | **refine_recommendations** | 传 `user_email` + `disliked_job_ids` 或 `disliked_indexes`。Hera 会把这些 job 在 profile.applications 中标记为 `excluded`（软删除），主站不展示。 |
-| 开始对某职位执行申请（含 bulk 中每一个） | **prepare_application_context** | 传 `user_email` + `job_id`（或 `application_id`）。Hera 返回 prompt_snippet、job_snapshot、resume_url 等，并写入该职位的 applicationStartedBy=manus。Bulk 时对每个选中职位并行调用。 |
-| 某职位投递结束（成功或失败） | **record_apply_result** | 传 `user_email`、`job_id`、`application_status`（`"submitted"` \| `"failed"`）、`applied_via: "manus"`，可选 `failure_reason`（string，如 "email_verification_timeout"）。Hera 更新主站 Applications 页状态。 |
+- **recommend_jobs / search_jobs / refine_recommendations** 第一轮只返回**列表层**（与主站 Job List 同维度）：`result.job_cards[]` 每项为 `{ card: { id, title, company, location, platform, jobUrl, postedDate, salary, employmentType, workMode, experienceTag, skillsMustHave, keyRequirements, matchScore, subScores, highlights, summary } }`，**不含**完整 job_detail，以节省成本与加快响应。
+- **「Show more about #x」**：用户说「show me more about #3」「tell me more about that role」「I want more details」时，Manus 调 **get_job_detail**：传 `job_id`（来自 `job_cards[i].card.id` 或 `meta.returned_job_ids[i]`），可选 `user_email`。Hera 返回 `result.job_detail`（完整详情，与主站详情页一致）。**若传了 `user_email`，该职位会同步写入 profile.applications（视为兴趣/JobSaved）**，主站 Applications 会显示；只有用户明确「不要 #x」时再调 refine 传 `disliked_job_ids` 才会排除。
+- **refine_recommendations** 默认每轮最多返回 **50** 条（与 recommend 同量级）；「show me more」时请传上一轮的 `meta.returned_job_ids` 作为 `exclude_ids`，以拿到下一批不重复的职位。
 
 ---
 
-## 3. 编号规则（Bulk 选职位）
+## 3. 与 Applications 相关的工具与调用时机
+
+| 时机 | 工具 | 要点 |
+|------|------|------|
+| 用户说「show me more #3」「show details of #5」要**看详情** | **get_job_detail** | 传 `job_id`（对应 #3 的 id）。可选 `user_email`：传则写入 profile.applications（兴趣），主站可见。返回 `job_detail` 供展示。 |
+| 用户表达兴趣或选定要投的职位（不一定要详情） | **refine_recommendations** | 传 `user_email` + `liked_job_ids` 或 `liked_indexes`（1-based）。Hera 会把这些 job 写入 profile.applications（JobSaved），并用于后续推荐。 |
+| 用户说「不要 #x」「排除 #x」 | **refine_recommendations** | 传 `user_email` + `disliked_job_ids` 或 `disliked_indexes`。Hera 会在 profile.applications 中标记为 `excluded`（软删除），主站不展示。 |
+| 开始对某职位执行申请（含 bulk 中每一个） | **prepare_application_context** | 传 `user_email` + `job_id`（或 `application_id`）。Hera 返回 prompt_snippet、job_snapshot、resume_url 等，并写入该职位的 applicationStartedBy=manus。Bulk 时对每个选中职位并行调用。 |
+| 某职位投递结束（成功或失败） | **record_apply_result** | 传 `user_email`、`job_id`、`application_status`（`"submitted"` \| `"failed"`）、`applied_via: "manus"`，可选 `failure_reason`。Hera 更新主站 Applications 页状态。 |
+
+---
+
+## 4. 编号规则（Bulk 选职位）
 
 - 第一轮推荐：1–50  
 - 第二轮：51–100  
@@ -34,7 +43,7 @@
 
 ---
 
-## 4. 简历优先级（开始申请前）
+## 5. 简历优先级（开始申请前）
 
 1. Hera **tailor_resume**（按 JD 定制）  
 2. 若 tailor 失败/超时 → 用户上传的**原始简历**（prepare_application_context 的 resume_url）  
@@ -44,14 +53,14 @@
 
 ---
 
-## 5. 主站 Applications 页与数据源
+## 6. 主站 Applications 页与数据源
 
 - 用户打开 Hera 主站 **/applications** 可看到：Job Title、Job Details、Apply Link、Start Application（Manus 调过 prepare 则显示绿色「Application Started」）、Tailor Application、Application Status、Hiring Status。
 - 列表**以 profile.applications 为主**（有记录即显示，含仅由 Manus 回传产生的记录），再合并主站「已保存职位」；被用户「不要 #x」的会软删除（excluded），不展示。
 
 ---
 
-## 6. record_apply_result 入参一览
+## 7. record_apply_result 入参一览
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -63,7 +72,7 @@
 
 ---
 
-## 7. 接入前自测（Hera 本地）
+## 8. 接入前自测（Hera 本地）
 
 在接入 Manus 前可在 Hera 本地跑一遍模拟调用，确认 MCP 与 Applications API 正常：
 
@@ -76,7 +85,7 @@ node scripts/test_manus_integration_pre.js
 
 ---
 
-## 8. 参考文档
+## 9. 参考文档
 
 - 完整对接与字段说明：`MANUS_HERA_APPLICATIONS_INTEGRATION_SPEC.md`  
 - 开始申请前基本问题：`MANUS_PRE_APPLY_QUESTIONS_CHECKLIST.md`  
