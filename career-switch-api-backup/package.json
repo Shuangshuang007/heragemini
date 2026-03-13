@@ -1,0 +1,23 @@
+{
+  "name": "career-switch-api",
+  "version": "1.0.0",
+  "description": "Héra Career Switch API - Standalone Service",
+  "main": "career_api_server.js",
+  "scripts": {
+    "start": "node career_api_server.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop career-switch-api",
+    "pm2:restart": "pm2 restart career-switch-api",
+    "pm2:logs": "pm2 logs career-switch-api"
+  },
+  "dependencies": {
+    "express": "^5.0.0",
+    "mongodb": "^6.0.0",
+    "openai": "^4.20.0",
+    "dotenv": "^16.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+

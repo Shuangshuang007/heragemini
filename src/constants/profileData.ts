@@ -273,6 +273,51 @@ export const JOB_TITLES: JobTitleGroup[] = [
     ]
   },
   {
+    label: { en: "Business & Project Management", zh: "商业与项目管理" },
+    options: [
+      {
+        value: "business_analyst",
+        label: { en: "Business Analyst", zh: "商业分析师" },
+        category: { en: "Business Analysis & Strategy", zh: "商业分析与战略" }
+      },
+      {
+        value: "project_manager",
+        label: { en: "Project Manager", zh: "项目经理" },
+        category: { en: "Project & Program Management", zh: "项目与项目管理" }
+      },
+      {
+        value: "product_manager",
+        label: { en: "Product Manager", zh: "产品经理" },
+        category: { en: "Product Management", zh: "产品管理" }
+      },
+      {
+        value: "operations_manager",
+        label: { en: "Operations Manager", zh: "运营经理" },
+        category: { en: "Operations", zh: "运营" }
+      },
+      {
+        value: "program_manager",
+        label: { en: "Program Manager", zh: "项目集经理" },
+        category: { en: "Project & Program Management", zh: "项目与项目管理" }
+      },
+      {
+        value: "management_consultant",
+        label: { en: "Management Consultant", zh: "管理咨询顾问" },
+        category: { en: "Consulting", zh: "咨询" }
+      },
+      {
+        value: "strategy_consultant",
+        label: { en: "Strategy Consultant", zh: "战略顾问" },
+        category: { en: "Consulting", zh: "咨询" }
+      },
+      {
+        value: "scrum_master",
+        label: { en: "Scrum Master", zh: "Scrum 主管" },
+        category: { en: "Project & Program Management", zh: "项目与项目管理" }
+      }
+    ]
+  },
+  {
     label: { en: "Finance & Accounting", zh: "金融与会计" },
     options: [
       {
@@ -314,6 +359,41 @@ export const JOB_TITLES: JobTitleGroup[] = [
         value: "fund_manager",
         label: { en: "Fund Manager", zh: "基金经理" },
         category: { en: "Investment & Asset Management", zh: "投资与资产管理" }
+      },
+      {
+        value: "financial_analyst",
+        label: { en: "Financial Analyst", zh: "财务分析师" },
+        category: { en: "Accounting & Finance", zh: "会计与财务" }
+      },
+      {
+        value: "tax_consultant",
+        label: { en: "Tax Consultant", zh: "税务顾问" },
+        category: { en: "Accounting & Finance", zh: "会计与财务" }
+      },
+      {
+        value: "internal_auditor",
+        label: { en: "Internal Auditor", zh: "内部审计师" },
+        category: { en: "Accounting & Finance", zh: "会计与财务" }
+      },
+      {
+        value: "risk_manager",
+        label: { en: "Risk Manager", zh: "风险管理师" },
+        category: { en: "Banking & Insurance", zh: "银行与保险" }
+      },
+      {
+        value: "insurance_broker",
+        label: { en: "Insurance Broker", zh: "保险经纪人" },
+        category: { en: "Banking & Insurance", zh: "银行与保险" }
+      },
+      {
+        value: "real_estate_agent",
+        label: { en: "Real Estate Agent", zh: "房地产经纪人" },
+        category: { en: "Real Estate", zh: "房地产" }
+      },
+      {
+        value: "property_manager",
+        label: { en: "Property Manager", zh: "物业经理" },
+        category: { en: "Real Estate", zh: "房地产" }
       }
     ]
   },
@@ -369,6 +449,46 @@ export const JOB_TITLES: JobTitleGroup[] = [
         value: "it_support_engineer",
         label: { en: "IT Support Engineer", zh: "IT支持工程师" },
         category: { en: "IT Support & Technical Services", zh: "IT支持与技术服务" }
+      },
+      {
+        value: "data_analyst",
+        label: { en: "Data Analyst", zh: "数据分析师" },
+        category: { en: "Data Science & Artificial Intelligence", zh: "数据科学与人工智能" }
+      },
+      {
+        value: "business_intelligence_analyst",
+        label: { en: "Business Intelligence Analyst", zh: "商业智能分析师" },
+        category: { en: "Data Science & Artificial Intelligence", zh: "数据科学与人工智能" }
+      },
+      {
+        value: "devops_engineer",
+        label: { en: "DevOps Engineer", zh: "DevOps 工程师" },
+        category: { en: "Software Development & Engineering", zh: "软件开发与工程" }
+      },
+      {
+        value: "quality_assurance_engineer",
+        label: { en: "Quality Assurance Engineer (QA)", zh: "质量保证工程师" },
+        category: { en: "Software Development & Engineering", zh: "软件开发与工程" }
+      },
+      {
+        value: "database_administrator",
+        label: { en: "Database Administrator (DBA)", zh: "数据库管理员" },
+        category: { en: "Network & Infrastructure", zh: "网络与基础设施" }
+      },
+      {
+        value: "cloud_architect",
+        label: { en: "Cloud Architect", zh: "云架构师" },
+        category: { en: "Network & Infrastructure", zh: "网络与基础设施" }
+      },
+      {
+        value: "mobile_app_developer",
+        label: { en: "Mobile App Developer", zh: "移动应用开发工程师" },
+        category: { en: "Software Development & Engineering", zh: "软件开发与工程" }
+      },
+      {
+        value: "security_engineer",
+        label: { en: "Security Engineer", zh: "安全工程师" },
+        category: { en: "Network & Infrastructure", zh: "网络与基础设施" }
       }
     ]
   },

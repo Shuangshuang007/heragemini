@@ -16,6 +16,7 @@ interface Application {
     title: string;
     company: string;
   };
+  jobUrl?: string;
   resumeTailor?: {
     gridfsId: string;
     downloadUrl: string;
@@ -27,6 +28,8 @@ interface Application {
     filename?: string;
   };
   applicationStatus?: string;
+  hiringStatus?: string;
+  applicationStartedBy?: 'manus' | 'hera_web';
   createdAt: string;
   updatedAt: string;
   userEmail: string;
@@ -146,6 +149,26 @@ export default function ApplicationsPage() {
     fetchData();
   }, []);
 
+  // 列表以 profile.applications 为主，再合并 savedJobs（不在 applications 中的）
+  const applicationJobIds = new Set(applications.map((a) => a.jobId));
+  const rowsFromApplications = applications.map((app) => ({
+    job: {
+      id: app.jobId,
+      title: app.jobSave?.title ?? 'Job',
+      company: app.jobSave?.company ?? '',
+      location: '',
+      platform: 'unknown',
+      url: app.jobUrl ?? '#'
+    } as any,
+    application: app
+  }));
+  const savedOnly = savedJobs.filter((sj) => !applicationJobIds.has(sj.id));
+  const rowsFromSaved = savedOnly.map((sj) => ({
+    job: sj,
+    application: applications.find((a) => a.jobId === sj.id)
+  }));
+  const displayList = [...rowsFromApplications, ...rowsFromSaved];
+
   return (
     <div className="min-h-screen bg-white">
       <div className="border-b border-gray-200 bg-white fixed top-0 left-0 w-full z-50 shadow-sm h-[56px]">
@@ -203,7 +226,7 @@ export default function ApplicationsPage() {
                       <AutoApplyTip />
                     </div>
                     <span className="text-sm text-gray-500">
-                      {savedJobs.length} {language === 'zh' ? '个职位' : 'jobs'}
+                      {displayList.length} {language === 'zh' ? '个职位' : 'jobs'}
                     </span>
                   </div>
                 </div>
@@ -228,34 +251,28 @@ export default function ApplicationsPage() {
                     </Link>
                   ) : null}
                 </div>
-              ) : savedJobs.length > 0 ? (
+              ) : displayList.length > 0 ? (
                 <div className="divide-y divide-gray-200">
-                  {savedJobs.map((job, index) => {
-                    // 查找匹配的MongoDB application数据
-                    const matchingApplication = applications.find(app => app.jobId === job.id);
-                    
-                    return (
-                      <ApplicationJobCard
-                        key={job.id + '-' + (job.platform || 'unknown')}
-                        job={job}
-                        language={language}
-                        isSelected={false}
-                        onSelect={() => {}}
-                        onViewDetails={() => {}}
-                        userProfile={{
-                          email: userProfile?.email,
-                          jobTitles: job.title ? [job.title] : [],
-                          skills: job.skills || [],
-                          city: job.location || '',
-                          seniority: job.experience || '',
-                          openToRelocate: false
-                        }}
-                        cardId={`job-card-${job.id}`}
-                        application={matchingApplication}
-
-                      />
-                    );
-                  })}
+                  {displayList.map(({ job, application }) => (
+                    <ApplicationJobCard
+                      key={job.id + '-' + (job.platform || 'unknown')}
+                      job={job}
+                      language={language}
+                      isSelected={false}
+                      onSelect={() => {}}
+                      onViewDetails={() => {}}
+                      userProfile={{
+                        email: userProfile?.email,
+                        jobTitles: job.title ? [job.title] : [],
+                        skills: job.skills || [],
+                        city: typeof job.location === 'string' ? job.location : (Array.isArray(job.location) ? job.location[0] : '') || '',
+                        seniority: job.experience || '',
+                        openToRelocate: false
+                      }}
+                      cardId={`job-card-${job.id}`}
+                      application={application}
+                    />
+                  ))}
                 </div>
               ) : (
                 <div className="text-center py-12 px-4">

@@ -65,6 +65,18 @@ export interface UserProfile {
       filename?: string;
     };
     applicationStatus?: string;
+    /** Channel that completed the application: manus | hera_web */
+    appliedVia?: 'manus' | 'hera_web';
+    /** Offer / hiring pipeline: Pending | Interviewing – Round 1/2/Final | Offer Received | Rejected | Accepted */
+    hiringStatus?: string;
+    /** Set when Manus (or main site) reports user started application; green "Application Started" when manus */
+    applicationStartedBy?: 'manus' | 'hera_web';
+    /** Soft delete: true when user said "don't want #x" via refine_recommendations disliked */
+    excluded?: boolean;
+    /** Apply link URL for list display when list is driven by profile.applications */
+    jobUrl?: string;
+    /** When application_status = failed, optional reason from Manus */
+    failureReason?: string;
     createdAt: Date;
     updatedAt: Date;
   }[];
@@ -261,6 +273,13 @@ export async function upsertJobApplication(email: string, jobId: string, updateD
     filename?: string;
   };
   applicationStatus?: string;
+  /** Channel that completed the application: manus | hera_web */
+  appliedVia?: 'manus' | 'hera_web';
+  hiringStatus?: string;
+  applicationStartedBy?: 'manus' | 'hera_web';
+  excluded?: boolean;
+  jobUrl?: string;
+  failureReason?: string;
 }): Promise<boolean> {
   try {
     const { db } = await connectToProfileDB();
@@ -286,6 +305,12 @@ export async function upsertJobApplication(email: string, jobId: string, updateD
       if (updateData.resumeTailor !== undefined) updateFields['applications.$.resumeTailor'] = updateData.resumeTailor;
       if (updateData.coverLetter !== undefined) updateFields['applications.$.coverLetter'] = updateData.coverLetter;
       if (updateData.applicationStatus !== undefined) updateFields['applications.$.applicationStatus'] = updateData.applicationStatus;
+      if (updateData.appliedVia !== undefined) updateFields['applications.$.appliedVia'] = updateData.appliedVia;
+      if (updateData.hiringStatus !== undefined) updateFields['applications.$.hiringStatus'] = updateData.hiringStatus;
+      if (updateData.applicationStartedBy !== undefined) updateFields['applications.$.applicationStartedBy'] = updateData.applicationStartedBy;
+      if (updateData.excluded !== undefined) updateFields['applications.$.excluded'] = updateData.excluded;
+      if (updateData.jobUrl !== undefined) updateFields['applications.$.jobUrl'] = updateData.jobUrl;
+      if (updateData.failureReason !== undefined) updateFields['applications.$.failureReason'] = updateData.failureReason;
       
       await collection.updateOne(
         { 
@@ -304,6 +329,12 @@ export async function upsertJobApplication(email: string, jobId: string, updateD
         resumeTailor: updateData.resumeTailor,
         coverLetter: updateData.coverLetter,
         applicationStatus: updateData.applicationStatus,
+        appliedVia: updateData.appliedVia,
+        hiringStatus: updateData.hiringStatus,
+        applicationStartedBy: updateData.applicationStartedBy,
+        excluded: updateData.excluded,
+        jobUrl: updateData.jobUrl,
+        failureReason: updateData.failureReason,
         createdAt: now,
         updatedAt: now
       };

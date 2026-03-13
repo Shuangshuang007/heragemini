@@ -16,8 +16,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchJobs } from '../../../services/jobFetchService';
-import { getUserProfile, upsertJobApplication } from '../../../services/profileDatabaseService';
-import { connectToMongoDB, queryJobsByIds, queryJobsWithFilters, transformMongoDBJobToFrontendFormat } from '../../../services/jobDatabaseService';
+import { getUserProfile, upsertUserProfile, upsertJobApplication } from '../../../services/profileDatabaseService';
+import { connectToMongoDB, getJobById, queryJobsByIds, queryJobsWithFilters, transformMongoDBJobToFrontendFormat } from '../../../services/jobDatabaseService';
+import { buildJobListPayload, buildJobDetailPayload } from '@/lib/jobPayloads';
 import { parseMessageWithGPT } from '../../../gpt-services/assistant/parseMessage';
 import { tailorResumeWithGPT } from '../../../gpt-services/resume/tailorResume';
 import { AgentKitPlanner } from '../../../lib/agentkit/planner';
@@ -713,6 +714,14 @@ export async function GET(request: NextRequest) {
         name: 'prepare_application_context',
         description: '📤 PREPARE APPLICATION CONTEXT - Get job + user context for Manus (use either user_email+job_id or user_email+application_id; verification = pause + manual takeover in v1)',
       },
+      {
+        name: 'record_apply_result',
+        description: '📤 RECORD APPLY RESULT - Report application outcome after Manus completes apply (submitted or failed). Sets applicationStatus and appliedVia=manus.',
+      },
+      {
+        name: 'get_job_detail',
+        description: '📄 GET JOB DETAIL - Fetch full job details by job_id. Use when user says "show me more about #3", "tell me more", "I want more details". First-round list returns list-layer only.',
+      },
     ],
     mode: HERA_MCP_MODE,
     status: 'healthy',
@@ -1099,6 +1108,24 @@ export async function POST(request: NextRequest) {
     }
 
     // ============================================
+    // find_or_create user by email (Manus / API partners: ensure ATS profile exists)
+    // ============================================
+    if (body.method === 'tools/call' && body.params?.arguments?.user_email) {
+      const user_email = String(body.params.arguments.user_email).trim();
+      if (user_email) {
+        try {
+          const existing = await getUserProfile(user_email);
+          if (!existing) {
+            await upsertUserProfile({ email: user_email, updatedAt: new Date() });
+            console.log('[MCP] find_or_create: profile created for', user_email);
+          }
+        } catch (e) {
+          console.warn('[MCP] find_or_create failed (non-blocking):', (e as Error)?.message);
+        }
+      }
+    }
+
+    // ============================================
     // initialize - Return protocol info
     // ============================================
     if (body.method === "initialize") {
@@ -1256,7 +1283,7 @@ export async function POST(request: NextRequest) {
               manus: {
                 type: "boolean",
                 default: true,
-                description: "When true (default), each entry in result.job_cards includes a job_detail object with full dimensions for Manus to render the Job Detail card. Use job_detail for the detail view. Set false to omit job_detail."
+                description: "When true (default), result.job_cards returns list-layer only (aligned with main site Job List). For full job details (e.g. 'show more about #3'), call get_job_detail with the job_id."
               }
             },
             required: ["user_profile"],
@@ -1312,10 +1339,10 @@ export async function POST(request: NextRequest) {
               },
               limit: {
                 type: "integer",
-                default: 10,
+                default: 50,
                 minimum: 5,
-                maximum: 20,
-                description: "Number of jobs to return (default: 10)"
+                maximum: 50,
+                description: "Number of jobs to return (default 50, same as recommend). Pass 50 for 'show me more' so user gets ~50 per round. After 4+ rounds pool may be smaller."
               },
               workMode: {
                 type: "string",
@@ -1324,7 +1351,17 @@ export async function POST(request: NextRequest) {
               employmentType: {
                 type: "string",
                 description: "Optional. Same as recommend_jobs (DB field employmentType): fill when user says e.g. 'more full time/part time/contract'. Send \"full time\" | \"part time\" | \"contract\" | \"casual\" only."
-              }
+              },
+              user_profile: {
+                type: "object",
+                description: "Optional. Same as recommend_jobs. Pass full/updated user context (jobTitles, skills, city, employmentHistory, etc.) so refine uses same profile as initial search. Manus should send any new or updated constraints since last call."
+              },
+              industry: { type: "string", description: "Optional. Same as recommend_jobs." },
+              skills: { type: "array", items: { type: "string" }, description: "Optional. Same as recommend_jobs (top-level or from user_profile)." },
+              company: { type: "string", description: "Optional. Same as recommend_jobs (e.g. only this company)." },
+              workModeStrict: { type: "boolean", description: "Optional. When true, filter by workMode in DB (same as recommend_jobs)." },
+              employmentTypeStrict: { type: "boolean", description: "Optional. When true, filter by employmentType in DB (same as recommend_jobs)." },
+              sponsorship_only: { type: "boolean", description: "Optional. Same as recommend_jobs (sponsorship only)." }
             },
             required: ["session_id"],
             additionalProperties: false
@@ -1659,6 +1696,20 @@ export async function POST(request: NextRequest) {
               application_id: { type: "string", description: "Application ID from create_application_intent (preferred when using Manus)" }
             },
             required: ["user_email"],
+            additionalProperties: false
+          }
+        },
+        {
+          name: "get_job_detail",
+          description: "📄 GET JOB DETAIL - Fetch full job details for one job by ID. Use when user says 'show me more about #3', 'tell me more about that role', 'I want more details'. Call with job_id from job_cards[].card.id or meta.returned_job_ids. If user_email is provided, this job is also synced to main site Applications (same as liked/JobSaved); only explicit 'don't want' (refine disliked_job_ids) excludes.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              job_id: { type: "string", description: "Hera job ID (from job_cards[].card.id or meta.returned_job_ids)" },
+              user_email: { type: "string", description: "Optional. When provided, job is synced to profile.applications (show more = interest, appears on main site Applications). Pass when user asked for details so it is recorded." },
+              session_id: { type: "string", description: "Optional. Session ID for context." }
+            },
+            required: ["job_id"],
             additionalProperties: false
           }
         },
@@ -2392,7 +2443,10 @@ export async function POST(request: NextRequest) {
             };
             const withScores = result.jobs.map((j: any) => ({ job: j, appScore: scoreJobForRecommend(j, scoreParams) }));
             withScores.sort((a, b) => b.appScore - a.appScore);
-            const topJobs = withScores.slice(0, limit).map((x: { job: any }) => x.job);
+            const topJobs = withScores.slice(0, limit).map((x: { job: any; appScore: number }) => ({
+              ...x.job,
+              matchScore: x.appScore,
+            }));
 
             const returnedIds = topJobs.map((j: any) => j.id || j.jobIdentifier).filter(Boolean);
             const safeJobs = topJobs.map((job: any) => ({
@@ -2412,6 +2466,8 @@ export async function POST(request: NextRequest) {
               topJobs.length
             );
 
+            const job_cards = topJobs.map((j: any) => ({ card: buildJobListPayload(j) }));
+
             return new Response(JSON.stringify({
               jsonrpc: "2.0",
               id: body.id ?? null,
@@ -2421,6 +2477,7 @@ export async function POST(request: NextRequest) {
                 mode: "search",
                 query_used: company ? { company } : { job_title: jobTitle, city },
                 total: topJobs.length,
+                job_cards,
                 meta: { returned_job_ids: returnedIds },
                 isFinal: true,
               },
@@ -3301,43 +3358,10 @@ export async function POST(request: NextRequest) {
               summary: job.summary || '',  // ✅ 包含 listSummary
             }));
 
-            // ✅ job_cards：给 Manus 的结构化展示层（card 极简，detail 完整；manus 为 true 时多带 job_detail 供详情卡渲染）
-            const job_cards = recommendedJobs.map((job: any) => {
-              const id = String(job._id || job.id || job.jobIdentifier || '');
-              const jobUrl = job.jobUrl || job.url || '';
-              const highlights = (job.matchHighlights && job.matchHighlights.length > 0 ? job.matchHighlights : job.highlights) || [];
-              const detailPayload = {
-                summary: job.summary || '',
-                skillsMustHave: job.skillsMustHave || [],
-                skillsNiceToHave: job.skillsNiceToHave || [],
-                keyRequirements: job.keyRequirements || [],
-                highlights,
-                subScores: job.subScores || null,
-                industry: job.industry ?? null,
-                employmentType: job.employmentType || job.employment_type || null,
-                workMode: job.workMode ?? null,
-                workRights: job.workRights ?? null,
-                salary: job.salary ?? null,
-                matchAnalysis: job.matchAnalysis ?? null,
-                jobUrl,
-              };
-              const entry: { card: any; detail: any; job_detail?: any } = {
-                card: {
-                  id,
-                  title: String(job.title || ''),
-                  company: String(job.company || job.company_name || ''),
-                  location: String(job.location || job.locationRaw || ''),
-                  matchScore: typeof job.matchScore === 'number' ? job.matchScore : null,
-                  highlights_preview: highlights.slice(0, 2),
-                  jobUrl,
-                },
-                detail: detailPayload,
-              };
-              if (manus) {
-                entry.job_detail = detailPayload;
-              }
-              return entry;
-            });
+            // ✅ job_cards: list-layer only (shared module, aligned with main site Job List). Use get_job_detail for full details.
+            const job_cards = recommendedJobs.map((job: any) => ({
+              card: buildJobListPayload(job),
+            }));
 
             // ✅ 使用 buildMarkdownCards 生成卡片（复用已有逻辑）
             const markdownCards = buildMarkdownCards(
@@ -3436,6 +3460,8 @@ export async function POST(request: NextRequest) {
                     last_search: {
                       job_title: searchCriteria.jobTitle,
                       city: searchCriteria.city,
+                      workMode: workMode ?? undefined,
+                      employmentType: employmentType ?? undefined,
                       timestamp: new Date().toISOString()
                     }
                   }
@@ -3474,12 +3500,12 @@ export async function POST(request: NextRequest) {
               next_actions.push('Use prepare_application_context when you select jobs to apply');
             }
 
-            // Phase 2: 添加用户反馈提示文案
+            // Phase 2: 添加用户反馈提示文案（含 show more details 引导）
             const feedback_prompt = `\n\n💡 **What would you like to do next?**\n` +
               `- Tell me which jobs you like (e.g., "I like #2 and #5")\n` +
               `- Tell me which ones don't interest you (e.g., "Not interested in #3")\n` +
-              `- Ask for more similar jobs (e.g., "Show me more jobs like #2")\n` +
-              `- Or simply say "show me more recommendations"`;
+              `- Ask for full analysis of a job (e.g., "Show me more about #3", "Tell me more about the second one")\n` +
+              `- Or say "show me more recommendations"`;
 
             return json200({
               jsonrpc: "2.0",
@@ -3549,11 +3575,19 @@ export async function POST(request: NextRequest) {
             exclude_ids = [],
             session_id,
             user_email,
-            limit = 10,
+            limit = 50,
             workMode,
             employmentType,
+            user_profile = {},
+            industry,
+            skills: skillsArg,
+            company: companyArg,
+            workModeStrict,
+            employmentTypeStrict,
+            sponsorship_only,
           } = args;
           
+          const effectiveRefineLimit = Math.min(50, Math.max(5, Number(limit) || 50));
           console.log('[MCP] refine_recommendations - Input:', { 
             liked_count: liked_job_ids.length, 
             disliked_count: disliked_job_ids.length,
@@ -3561,7 +3595,9 @@ export async function POST(request: NextRequest) {
             disliked_indexes: Array.isArray(disliked_indexes) ? disliked_indexes.length : 0,
             exclude_count: exclude_ids.length,
             session_id,
-            limit 
+            limit,
+            effectiveRefineLimit,
+            has_user_profile: !!(user_profile && Object.keys(user_profile).length > 0)
           });
           
           try {
@@ -3579,6 +3615,11 @@ export async function POST(request: NextRequest) {
             let memory_added_count = 0;
             let effectiveJobTitle: string | undefined = job_title;
             let effectiveCity: string | undefined = city;
+            let effectiveWorkMode: string | undefined = workMode;
+            let effectiveEmploymentType: string | undefined = employmentType;
+            const effectiveIndustry = industry ?? (user_profile as any)?.industry;
+            const effectiveSkills = Array.isArray(skillsArg) ? skillsArg : (Array.isArray((user_profile as any)?.skills) ? (user_profile as any).skills : []);
+            const effectiveCompany = (companyArg != null && String(companyArg).trim() !== '') ? String(companyArg).trim() : undefined;
             let lastReturnedIds: string[] = [];
             if (session_id) {
               try {
@@ -3596,11 +3637,13 @@ export async function POST(request: NextRequest) {
                 if (context?.context?.jobContext?.last_returned_ids) {
                   lastReturnedIds = context.context.jobContext.last_returned_ids;
                 }
-                // 自动回填上一轮检索条件
+                // 自动回填上一轮检索条件（与 recommend 对齐：job_title, city, workMode, employmentType）
                 const last = context?.context?.jobContext?.last_search;
                 if (last) {
                   if (!effectiveJobTitle && last.job_title) effectiveJobTitle = last.job_title;
                   if (!effectiveCity && last.city) effectiveCity = last.city;
+                  if (workMode == null && (last as any).workMode) effectiveWorkMode = (last as any).workMode;
+                  if (employmentType == null && (last as any).employmentType) effectiveEmploymentType = (last as any).employmentType;
                 }
                 console.log(`[refine] Layer 2 (AgentKit Memory): added ${memory_added_count} jobs`);
               } catch (err) {
@@ -3708,28 +3751,84 @@ export async function POST(request: NextRequest) {
             }
             
             // ========================================
-            // 构建查询（排除 EXCLUDE_SET + 必须过滤）
+            // Manus 对齐：兴趣=JobSaved（liked → upsert jobSave）；不要=软删除（disliked → excluded: true）
             // ========================================
-            const searchLimit = 30;
-            const queryOptions: Parameters<typeof queryJobsWithFilters>[0] = {
-              jobTitle: effectiveJobTitle,
-              city: effectiveCity,
+            const refineUserEmail = String(args?.user_email || '').trim();
+            if (refineUserEmail) {
+              if (liked_job_ids.length > 0) {
+                try {
+                  const likedJobsForSync = await queryJobsByIds(liked_job_ids);
+                  for (const job of likedJobsForSync) {
+                    const jid = job.id || job._id;
+                    if (!jid) continue;
+                    await upsertJobApplication(refineUserEmail, String(jid), {
+                      jobSave: { title: job.title || '', company: job.company || '' },
+                      jobUrl: job.url || job.jobUrl
+                    });
+                  }
+                  console.log('[refine] Synced liked to profile.applications:', liked_job_ids.length);
+                } catch (e) {
+                  console.warn('[refine] Sync liked to applications failed (non-blocking):', (e as Error)?.message);
+                }
+              }
+              if (disliked_job_ids.length > 0) {
+                try {
+                  for (const id of disliked_job_ids) {
+                    await upsertJobApplication(refineUserEmail, String(id), { excluded: true });
+                  }
+                  console.log('[refine] Marked disliked as excluded in profile.applications:', disliked_job_ids.length);
+                } catch (e) {
+                  console.warn('[refine] Sync disliked to applications failed (non-blocking):', (e as Error)?.message);
+                }
+              }
+            }
+            
+            // ========================================
+            // 构建查询（与 recommend_jobs 对齐：jobTitle, city, company, industry, skills, workMode/employmentType 仅 strict 时入查询）
+            // 池子 200，与 recommend 一致；平均 400–500 职位下前几轮可稳定返回 ~50
+            // ========================================
+            const searchLimit = 200;
+            const queryOptions: any = {
+              jobTitle: effectiveJobTitle?.trim() || undefined,
+              city: effectiveCity?.trim() || undefined,
               page: 1,
               pageSize: searchLimit,
               excludeIds: Array.from(EXCLUDE_SET).slice(-2000),
-              ...(workMode != null && workMode !== '' ? { workMode } : {}),
-              ...(employmentType != null && employmentType !== '' ? { employmentType } : {}),
             };
+            if (effectiveCompany) queryOptions.company = effectiveCompany;
+            if (effectiveIndustry?.trim()) queryOptions.industry = effectiveIndustry.trim();
+            if (effectiveSkills.length > 0) queryOptions.skills = effectiveSkills.filter((s: string) => s?.trim());
+            if (sponsorship_only === true) queryOptions.sponsorshipOnly = true;
+            if (workModeStrict === true && effectiveWorkMode != null && effectiveWorkMode !== '') queryOptions.workMode = effectiveWorkMode;
+            if (employmentTypeStrict === true && effectiveEmploymentType != null && effectiveEmploymentType !== '') queryOptions.employmentType = effectiveEmploymentType;
             const { jobs: candidates } = await queryJobsWithFilters(queryOptions);
             
             console.log(`[refine] Found ${candidates.length} candidates after excluding ${EXCLUDE_SET.size}`);
             
             // ========================================
-            // 轻量打分（如果有偏好）
+            // 与 recommend 对齐：按 user_profile/industry/skills/workMode/employmentType/company 做 app 层打分并排序
             // ========================================
             let scored = candidates;
+            if (effectiveJobTitle || effectiveIndustry || effectiveSkills.length || effectiveWorkMode || effectiveEmploymentType || effectiveCompany) {
+              const scoreParams = {
+                jobTitle: effectiveJobTitle?.trim() || null,
+                industry: effectiveIndustry?.trim() || null,
+                skills: effectiveSkills,
+                workMode: effectiveWorkMode ?? null,
+                employmentType: effectiveEmploymentType ?? null,
+                company: effectiveCompany ?? null,
+              };
+              const withAppScore = scored.map((j: any) => ({ job: j, appScore: scoreJobForRecommend(j, scoreParams) }));
+              withAppScore.sort((a: { appScore: number }, b: { appScore: number }) => b.appScore - a.appScore);
+              scored = withAppScore.map((x: { job: any }) => x.job);
+              console.log('[refine] Applied profile/constraint scoring (same as recommend_jobs)');
+            }
+            
+            // ========================================
+            // 轻量打分（如果有 liked 偏好：「多推荐类似 xx 职位」保留）
+            // ========================================
             if (preferences) {
-              scored = candidates.map((job: any) => {
+              scored = scored.map((job: any) => {
                 let score = 50; // 基础分
                 
                 // 标题匹配 +30
@@ -3790,7 +3889,7 @@ export async function POST(request: NextRequest) {
               console.log(`[refine] Fingerprint dedup removed ${beforeFingerprint - transformed.length} items`);
             }
 
-            const results = transformed.slice(0, limit);
+            const results = transformed.slice(0, effectiveRefineLimit);
             
             console.log(`[refine] Returning ${results.length} refined recommendations`);
 
@@ -3811,6 +3910,8 @@ export async function POST(request: NextRequest) {
                     last_search: {
                       job_title: effectiveJobTitle,
                       city: effectiveCity,
+                      workMode: effectiveWorkMode,
+                      employmentType: effectiveEmploymentType,
                       timestamp: new Date().toISOString()
                     }
                   }
@@ -3887,8 +3988,12 @@ export async function POST(request: NextRequest) {
             const feedback_prompt = `\n\n💡 **Want more?**\n` +
               `- Tell me which jobs you like (e.g., "I like #2 and #4")\n` +
               `- Tell me which to exclude (e.g., "Not interested in #3")\n` +
+              `- Ask for full details (e.g., "Show me more about #2", "Tell me more about that role")\n` +
               `- Or say "show me more" to continue`;
             
+            // job_cards: list-layer only (same module as recommend_jobs, main-site aligned)
+            const job_cards = results.map((j: any) => ({ card: buildJobListPayload(j) }));
+
             return json200({
               jsonrpc: "2.0",
               id: body.id ?? null,
@@ -3903,15 +4008,23 @@ export async function POST(request: NextRequest) {
                 excluded_count: EXCLUDE_SET.size,
                 preferences_applied: !!preferences,
                 isFinal: false,
+                job_cards,
                 meta: {
                   returned_job_ids: results.map((j: any) => j.id),
                   index_to_id: results.map((j: any) => j.id),
                   excluded_breakdown: {
                     from_param: param_excluded_count,
                     from_memory: memory_added_count,
-                    // feedback_count is logged above; include if available
                   },
-                  session_id
+                  session_id,
+                  search_context_used: {
+                    job_title: effectiveJobTitle ?? null,
+                    city: effectiveCity ?? null,
+                    workMode: effectiveWorkMode ?? null,
+                    employmentType: effectiveEmploymentType ?? null,
+                    industry: effectiveIndustry ?? null,
+                    company: effectiveCompany ?? null,
+                  }
                 }
               }
             }, { "X-MCP-Trace-Id": traceId });
@@ -5187,6 +5300,16 @@ export async function POST(request: NextRequest) {
             }
             const appForJob = profileResolved?.applications?.find((a: any) => a.jobId === job_id);
             const resume_url = appForJob?.resumeTailor?.downloadUrl ?? null;
+            // Manus 对齐：prepare 被调即视为「开始申请」，写入 applicationStartedBy + jobSave
+            try {
+              await upsertJobApplication(resolvedEmail, job_id, {
+                jobSave: { title: job.title || '', company: job.company || '' },
+                jobUrl: job.url || job.jobUrl,
+                applicationStartedBy: 'manus'
+              });
+            } catch (e) {
+              console.warn('[MCP] prepare_application_context sync to applications failed (non-blocking):', (e as Error)?.message);
+            }
             const jobSnapshot = buildJobSnapshotFromJob(job);
             const submit_policy = "do_not_submit_without_explicit_user_confirmation";
             const prompt_snippet = `Apply to this job on behalf of the user. Job: ${jobSnapshot.title} at ${jobSnapshot.company}. Apply URL: ${jobSnapshot.jobUrl}. Do NOT guess sponsor, clearance, or citizenship. If the platform requires verification (email code, SMS, MFA, captcha, or final confirmation), pause and wait for user input (v1: manual takeover). Submit only after user explicitly confirms.`;
@@ -5222,6 +5345,142 @@ export async function POST(request: NextRequest) {
                 content: [{ type: "text", text: `Failed to prepare context: ${err?.message || err}` }],
                 isError: false,
                 error: "prepare_failed"
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+        }
+
+        // ============================================
+        // Tool: record_apply_result（Manus 投递结束时回传）
+        // ============================================
+        else if (name === "record_apply_result") {
+          const recUserEmail = String(args?.user_email ?? "").trim();
+          const recJobId = String(args?.job_id ?? "").trim();
+          const applicationStatusArg = String(args?.application_status ?? "").toLowerCase();
+          const appliedViaArg = String(args?.applied_via ?? "manus").toLowerCase();
+          const failureReasonArg = args?.failure_reason != null ? String(args.failure_reason) : undefined;
+          if (!recUserEmail || !recJobId) {
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: "Missing user_email or job_id." }],
+                isError: false,
+                error: "missing_params"
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+          const applicationStatus = applicationStatusArg === "submitted" ? "Application Submitted" : "Application Failed";
+          try {
+            await upsertJobApplication(recUserEmail, recJobId, {
+              applicationStatus,
+              appliedVia: appliedViaArg === "manus" ? "manus" : "hera_web",
+              failureReason: failureReasonArg
+            });
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: `Recorded: ${applicationStatus} for job ${recJobId}${failureReasonArg ? ` (reason: ${failureReasonArg})` : ""}.` }],
+                isError: false
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          } catch (e: any) {
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: `Failed to record apply result: ${e?.message || e}` }],
+                isError: false,
+                error: "record_failed"
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+        }
+
+        // ============================================
+        // Tool: get_job_detail (show more about #x / tell me more)
+        // ============================================
+        else if (name === "get_job_detail") {
+          const jobId = String(args?.job_id ?? "").trim();
+          const userEmail = typeof args?.user_email === "string" ? args.user_email.trim() : "";
+          if (!jobId) {
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: "Missing job_id." }],
+                isError: false,
+                error: "missing_params"
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+          try {
+            const jobDoc = await getJobById(jobId);
+            if (!jobDoc) {
+              return json200({
+                jsonrpc: "2.0",
+                id: body.id ?? null,
+                result: {
+                  content: [{ type: "text", text: `Job not found: ${jobId}` }],
+                  isError: false,
+                  error: "not_found"
+                }
+              }, { "X-MCP-Trace-Id": traceId });
+            }
+            const frontendJob = transformMongoDBJobToFrontendFormat(jobDoc);
+            if (!frontendJob) {
+              return json200({
+                jsonrpc: "2.0",
+                id: body.id ?? null,
+                result: {
+                  content: [{ type: "text", text: `Failed to transform job: ${jobId}` }],
+                  isError: false,
+                  error: "transform_failed"
+                }
+              }, { "X-MCP-Trace-Id": traceId });
+            }
+            const detail = buildJobDetailPayload(frontendJob);
+            if (!detail) {
+              return json200({
+                jsonrpc: "2.0",
+                id: body.id ?? null,
+                result: {
+                  content: [{ type: "text", text: `Failed to build detail for job: ${jobId}` }],
+                  isError: false,
+                  error: "build_failed"
+                }
+              }, { "X-MCP-Trace-Id": traceId });
+            }
+            // Show more = interest: sync to profile.applications (same as liked). Only explicit "don't want" (disliked) excludes.
+            if (userEmail) {
+              try {
+                await upsertJobApplication(userEmail, jobId, {
+                  jobSave: { title: detail.title || "", company: detail.company || "" },
+                  jobUrl: detail.url || (frontendJob as any).jobUrl || (frontendJob as any).url || "",
+                });
+                console.log("[get_job_detail] Synced show-more to profile.applications for job:", jobId);
+              } catch (e) {
+                console.warn("[get_job_detail] Sync to applications failed (non-blocking):", (e as Error)?.message);
+              }
+            }
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: `Full details for job: ${detail.title} at ${detail.company}` }],
+                isError: false,
+                job_detail: detail,
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          } catch (e: any) {
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: `Failed to get job detail: ${e?.message || e}` }],
+                isError: false,
+                error: "get_failed"
               }
             }, { "X-MCP-Trace-Id": traceId });
           }

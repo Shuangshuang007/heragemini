@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 提取applications数组
-    const applications = profile.applications || [];
+    // 提取applications数组，过滤掉 Manus 软删除的（excluded: true）
+    const applications = (profile.applications || []).filter((app: any) => !app.excluded);
     
     // 为每个application添加用户信息（用于显示）
     const applicationsWithUserInfo = applications.map(app => ({

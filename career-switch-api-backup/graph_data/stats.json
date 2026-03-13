@@ -1,0 +1,95 @@
+{
+  "totalJobs": 51283,
+  "jobsWithTags": 51283,
+  "coverageRate": 1,
+  "uniqueTitles": 30598,
+  "totalEdges": 60680,
+  "avgSimilarity": 0.7011381163481185,
+  "avgSharedTags": 7.579433091628213,
+  "similarityThreshold": 0.45,
+  "topIndustries": [
+    {
+      "industry": "Finance",
+      "count": 2555
+    },
+    {
+      "industry": "Technology",
+      "count": 1773
+    },
+    {
+      "industry": "Energy / Utilities",
+      "count": 1447
+    },
+    {
+      "industry": "Education",
+      "count": 1048
+    },
+    {
+      "industry": "Healthcare",
+      "count": 768
+    },
+    {
+      "industry": "Legal Services",
+      "count": 605
+    },
+    {
+      "industry": "Hospitality / Food Service",
+      "count": 552
+    },
+    {
+      "industry": "Healthcare / Aged Care",
+      "count": 533
+    },
+    {
+      "industry": "Retail",
+      "count": 486
+    },
+    {
+      "industry": "Construction",
+      "count": 417
+    }
+  ],
+  "topFunctions": [
+    {
+      "function": "Project Management",
+      "count": 732
+    },
+    {
+      "function": "Business Development / Sales",
+      "count": 696
+    },
+    {
+      "function": "Sales / Customer Service",
+      "count": 478
+    },
+    {
+      "function": "Sales / Business Development",
+      "count": 453
+    },
+    {
+      "function": "Retail Store Management",
+      "count": 296
+    },
+    {
+      "function": "Retail Management / Store Operations",
+      "count": 247
+    },
+    {
+      "function": "Culinary / Food Preparation",
+      "count": 244
+    },
+    {
+      "function": "Product Management",
+      "count": 241
+    },
+    {
+      "function": "Retail Management / Team Leadership",
+      "count": 221
+    },
+    {
+      "function": "Teaching / Education",
+      "count": 197
+    }
+  ],
+  "buildTime": "2025-10-24T23:36:35.356Z"
+}

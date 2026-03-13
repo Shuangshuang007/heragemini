@@ -4128,16 +4128,74 @@ export async function POST(request: NextRequest) {
                 markdownReport += `## 💼 Recommended Career Transitions\n\n`;
                 data.candidates.slice(0, 10).forEach((candidate: any, index: number) => {
                   markdownReport += `**${index + 1}. ${candidate.to}**\n`;
+                  
+                  // Base similarity score
                   markdownReport += `Similarity: ${Math.round((candidate.similarity || 0) * 100)}%`;
+                  
+                  // 🆕 Priority 1: Scoring data
+                  if (candidate.opportunityScore !== undefined && candidate.opportunityScore !== null) {
+                    markdownReport += ` | Opportunity Score: ${Math.round(candidate.opportunityScore * 100)}%`;
+                  }
+                  if (candidate.score !== undefined && candidate.score !== null) {
+                    markdownReport += ` | Overall Score: ${Math.round(candidate.score * 100)}%`;
+                  }
+                  if (candidate.feasibilityScore !== undefined && candidate.feasibilityScore !== null) {
+                    markdownReport += ` | Feasibility: ${Math.round(candidate.feasibilityScore * 100)}%`;
+                  }
+                  
                   if (candidate.difficulty) markdownReport += ` | Difficulty: ${candidate.difficulty}`;
                   if (candidate.transitionTime) markdownReport += ` | Timeline: ${candidate.transitionTime}`;
                   markdownReport += `\n`;
+                  
+                  // 🆕 Priority 1: Location information
+                  if (candidate.fromCountry || candidate.toCountry) {
+                    const locationInfo = [];
+                    if (candidate.fromCountry) locationInfo.push(`From: ${candidate.fromCountry}`);
+                    if (candidate.toCountry) locationInfo.push(`To: ${candidate.toCountry}`);
+                    if (candidate.isCrossCountry) locationInfo.push(`(Cross-country)`);
+                    if (candidate.remoteSupported) locationInfo.push(`Remote supported`);
+                    markdownReport += `**Location:** ${locationInfo.join(' | ')}\n`;
+                  }
+                  
+                  // 🆕 Priority 1: Market data
+                  if (candidate.market) {
+                    const marketInfo = [];
+                    if (candidate.market.trend !== undefined && candidate.market.trend !== null) {
+                      const trendEmoji = candidate.market.trend > 0 ? '📈' : candidate.market.trend < 0 ? '📉' : '➡️';
+                      marketInfo.push(`${trendEmoji} Trend: ${(candidate.market.trend * 100).toFixed(0)}%`);
+                    }
+                    if (candidate.market.remoteRate !== undefined && candidate.market.remoteRate !== null) {
+                      marketInfo.push(`Remote: ${Math.round(candidate.market.remoteRate * 100)}%`);
+                    }
+                    if (candidate.market.sponsorshipRate !== undefined && candidate.market.sponsorshipRate !== null) {
+                      marketInfo.push(`Sponsorship: ${Math.round(candidate.market.sponsorshipRate * 100)}%`);
+                    }
+                    if (candidate.market.avgSalary) {
+                      marketInfo.push(`Avg Salary: ${candidate.market.avgSalary}`);
+                    }
+                    if (marketInfo.length > 0) {
+                      markdownReport += `**Market Data:** ${marketInfo.join(' | ')}\n`;
+                    }
+                    
+                    // Industry distribution (if available)
+                    if (candidate.market.industryDistribution && Object.keys(candidate.market.industryDistribution).length > 0) {
+                      const topIndustries = Object.entries(candidate.market.industryDistribution)
+                        .sort(([, a], [, b]) => (b as number) - (a as number))
+                        .slice(0, 3)
+                        .map(([industry, pct]) => `${industry} ${Math.round((pct as number) * 100)}%`)
+                        .join(', ');
+                      markdownReport += `**Top Industries:** ${topIndustries}\n`;
+                    }
+                  }
+                  
+                  // Existing skills information (unchanged)
                   if (candidate.sharedTags && candidate.sharedTags.length > 0) {
                     markdownReport += `**Shared Skills:** ${candidate.sharedTags.slice(0, 5).join(', ')}\n`;
                   }
                   if (candidate.skillsToLearn && candidate.skillsToLearn.length > 0) {
                     markdownReport += `**Skills to Learn:** ${candidate.skillsToLearn.slice(0, 5).join(', ')}\n`;
                   }
+                  
                   markdownReport += `\n---\n\n`;
                 });
               }

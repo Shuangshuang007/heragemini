@@ -3,7 +3,7 @@ import { upsertJobApplication } from '@/services/profileDatabaseService';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, jobId, jobSave, resumeTailor, coverLetter, applicationStatus } = await request.json();
+    const { email, jobId, jobSave, resumeTailor, coverLetter, applicationStatus, appliedVia, hiringStatus, applicationStartedBy } = await request.json();
     
     if (!email || !jobId) {
       return NextResponse.json(
@@ -17,6 +17,9 @@ export async function POST(request: NextRequest) {
     if (resumeTailor !== undefined) updateData.resumeTailor = resumeTailor;
     if (coverLetter !== undefined) updateData.coverLetter = coverLetter;
     if (applicationStatus !== undefined) updateData.applicationStatus = applicationStatus;
+    if (appliedVia !== undefined) updateData.appliedVia = appliedVia;
+    if (hiringStatus !== undefined) updateData.hiringStatus = hiringStatus;
+    if (applicationStartedBy !== undefined) updateData.applicationStartedBy = applicationStartedBy;
 
     const success = await upsertJobApplication(email, jobId, updateData);
 

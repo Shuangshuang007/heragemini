@@ -14,6 +14,22 @@ function sanitizeString(value?: string | null): string {
   return (value || '').toString().trim();
 }
 
+/** Build regex that is case-insensitive ($options: 'i') so "onsite"/"Onsite"/"ONSITE" all match DB value "Onsite". Also treats spaces/hyphens as equivalent (e.g. "full time" matches "Full-time", "onsite" matches "On-site"). */
+function flexiblePhraseRegex(phrase: string): { $regex: string; $options: string } {
+  const trimmed = (phrase || '').toString().trim();
+  if (!trimmed) return { $regex: trimmed, $options: 'i' };
+  let s = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Normalize compound words; /gi = case-insensitive so "onsite"/"Onsite"/"ONSITE" all match DB "Onsite"
+  s = s.replace(/\bonsite\b/gi, 'on[\\s\\-]*site')
+    .replace(/\bon-site\b/gi, 'on[\\s\\-]*site')
+    .replace(/\bfulltime\b/gi, 'full[\\s\\-]*time')
+    .replace(/\bfull-time\b/gi, 'full[\\s\\-]*time')
+    .replace(/\bparttime\b/gi, 'part[\\s\\-]*time')
+    .replace(/\bpart-time\b/gi, 'part[\\s\\-]*time');
+  s = s.replace(/[\s\-–—]+/g, '[\\s\\-]+');
+  return { $regex: s, $options: 'i' };
+}
+
 function mapArrayField(value: any): string[] {
   if (Array.isArray(value)) {
     return value.map(sanitizeString).filter(Boolean);
@@ -312,6 +328,11 @@ export async function queryJobsWithFilters(options: {
   jobTitle?: string;
   city?: string;
   company?: string;
+  industry?: string;
+  skills?: string[];
+  workMode?: string;
+  employmentType?: string;
+  sponsorshipOnly?: boolean;
   postedWithinDays?: number;
   platforms?: string[];
   page?: number;
@@ -325,7 +346,11 @@ export async function queryJobsWithFilters(options: {
   hasMore: boolean;
 }> {
   try {
+    const t0 = Date.now();
     const { db } = await connectToMongoDB();
+    const tConnect = Date.now() - t0;
+    if (tConnect > 100) console.log(`[TIMING] queryJobsWithFilters connectToMongoDB: ${tConnect}ms`);
+
     const collection = db.collection(COLLECTION_NAME);
     
     const query: any = { is_active: { $ne: false } };
@@ -354,7 +379,67 @@ export async function queryJobsWithFilters(options: {
     if (options.company) {
       query.company = { $regex: options.company, $options: 'i' };
     }
-    
+
+    // Industry filter (existing field: industry)
+    if (options.industry) {
+      query.$and = query.$and || [];
+      query.$and.push({ industry: { $regex: options.industry, $options: 'i' } });
+    }
+
+    // Work mode filter: match workMode OR summary OR description (phrases like "2 days onsite" often appear only in text).
+    if (options.workMode) {
+      const workRe = flexiblePhraseRegex(options.workMode);
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { workMode: workRe },
+          { summary: workRe },
+          { description: workRe },
+        ],
+      });
+    }
+
+    // Employment type filter: match employmentType OR jobType OR summary OR description.
+    if (options.employmentType) {
+      const empRe = flexiblePhraseRegex(options.employmentType);
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { employmentType: empRe },
+          { jobType: empRe },
+          { summary: empRe },
+          { description: empRe },
+        ],
+      });
+    }
+
+    // Sponsorship filter: only jobs that offer or require sponsorship.
+    // Include: available, required. Exclude: not_available, unknown. Verify with db.jobs.distinct('workRights.sponsorship').
+    if (options.sponsorshipOnly === true) {
+      query.$and = query.$and || [];
+      query.$and.push({ 'workRights.sponsorship': { $in: ['available', 'required'] } });
+    }
+
+    // Skills filter: match if any provided skill appears in topSkills, skillsMust, skillsNice, summary, or description (relaxed for more results, same idea as jobTitle).
+    if (options.skills && options.skills.length > 0) {
+      const skillConditions = options.skills.filter((s) => s?.trim()).map((skill) => {
+        const re = { $regex: skill.trim(), $options: 'i' };
+        return {
+          $or: [
+            { topSkills: re },
+            { skillsMust: re },
+            { skillsNice: re },
+            { summary: re },
+            { description: re },
+          ],
+        };
+      });
+      if (skillConditions.length > 0) {
+        query.$and = query.$and || [];
+        query.$and.push({ $or: skillConditions });
+      }
+    }
+
     // Platform filter
     if (options.platforms && options.platforms.length > 0) {
       const platformConditions: any[] = [];
@@ -400,20 +485,32 @@ export async function queryJobsWithFilters(options: {
     const skip = (page - 1) * pageSize;
     
     // Get total count
+    const t1 = Date.now();
     const total = await collection.countDocuments(query);
+    const tCount = Date.now() - t1;
+    if (tCount > 200) console.log(`[TIMING] queryJobsWithFilters countDocuments: ${tCount}ms (total=${total})`);
     
     // Get jobs
+    const t2 = Date.now();
     const jobs = await collection
       .find(query)
       .sort({ updatedAt: -1, createdAt: -1 })
       .skip(skip)
       .limit(pageSize)
       .toArray();
+    const tFind = Date.now() - t2;
+    if (tFind > 300) console.log(`[TIMING] queryJobsWithFilters find+sort+skip+limit+toArray: ${tFind}ms (docs=${jobs.length})`);
     
     // Transform to frontend format
+    const t3 = Date.now();
     const transformedJobs = jobs
       .map(transformMongoDBJobToFrontendFormat)
       .filter((job: any) => job !== null);
+    const tTransform = Date.now() - t3;
+    if (tTransform > 100) console.log(`[TIMING] queryJobsWithFilters transform: ${tTransform}ms`);
+    
+    const tTotal = Date.now() - t0;
+    console.log(`[TIMING] queryJobsWithFilters TOTAL: ${tTotal}ms (connect=${tConnect} count=${tCount} find=${tFind} transform=${tTransform})`);
     
     return {
       jobs: transformedJobs,
