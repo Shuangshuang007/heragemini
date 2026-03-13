@@ -20,6 +20,7 @@ import { getUserProfile, upsertUserProfile, upsertJobApplication } from '../../.
 import { connectToMongoDB, getJobById, queryJobsByIds, queryJobsWithFilters, transformMongoDBJobToFrontendFormat, updateJobFields } from '../../../services/jobDatabaseService';
 import { needsJobAnalysis, analyzeJobWithGPT } from '../../../services/jobAnalysisService';
 import { buildJobListPayload, buildJobDetailPayload } from '@/lib/jobPayloads';
+import { scoreJobWithJobMatch } from '@/lib/mcpJobMatch';
 import { parseMessageWithGPT } from '../../../gpt-services/assistant/parseMessage';
 import { tailorResumeWithGPT } from '../../../gpt-services/resume/tailorResume';
 import { AgentKitPlanner } from '../../../lib/agentkit/planner';
@@ -2449,8 +2450,21 @@ export async function POST(request: NextRequest) {
               matchScore: x.appScore,
             }));
 
-            const returnedIds = topJobs.map((j: any) => j.id || j.jobIdentifier).filter(Boolean);
-            const safeJobs = topJobs.map((job: any) => ({
+            // GPT jobMatch for search: minimal profile from args so job_cards include match_analysis
+            const searchUserProfile = {
+              jobTitles: jobTitle ? [jobTitle] : [],
+              skills: skills || [],
+              city: city || null,
+              seniority: '',
+              openToRelocate: false,
+              careerPriorities: [],
+            };
+            const jobsWithAnalysis = await Promise.all(
+              topJobs.map((j: any) => scoreJobWithJobMatch(j, searchUserProfile))
+            );
+
+            const returnedIds = jobsWithAnalysis.map((j: any) => j.id || j.jobIdentifier).filter(Boolean);
+            const safeJobs = jobsWithAnalysis.map((job: any) => ({
               ...mapJobSafe(job),
               highlights: extractHighlights(job),
               skillsMustHave: job.skillsMustHave || [],
@@ -2464,10 +2478,11 @@ export async function POST(request: NextRequest) {
             const markdownPreview = buildMarkdownCards(
               { title: cardTitle, city: cardCity },
               safeJobs,
-              topJobs.length
+              jobsWithAnalysis.length
             );
 
-            const job_cards = topJobs.map((j: any) => ({
+            // job_cards: card = list payload; match_analysis = independent dimension for Manus (GPT analysis text)
+            const job_cards = jobsWithAnalysis.map((j: any) => ({
               card: buildJobListPayload(j),
               match_analysis: (j.matchAnalysis != null && String(j.matchAnalysis).trim() !== '') ? String(j.matchAnalysis).trim() : undefined,
             }));
@@ -2480,7 +2495,7 @@ export async function POST(request: NextRequest) {
                 isError: false,
                 mode: "search",
                 query_used: company ? { company } : { job_title: jobTitle, city },
-                total: topJobs.length,
+                total: jobsWithAnalysis.length,
                 job_cards,
                 meta: { returned_job_ids: returnedIds },
                 isFinal: true,
@@ -3200,136 +3215,11 @@ export async function POST(request: NextRequest) {
             // 不再调用 mirror-jobs POST，因为数据库已有完整数据
             console.log(`[MCP] Using database jobs directly (${transformedJobs.length} jobs with complete tags)`);
 
-            // 3. 对每个职位进行用户匹配分析（只调用 jobMatch API 获取 matchScore 和 listSummary）
+            // 3. 对每个职位进行用户匹配分析（复用 mcpJobMatch 模块）
             console.log(`[MCP] Starting GPT matching for ${transformedJobs.length} jobs`);
             t0 = Date.now();
             const scoredJobs = await Promise.all(
-              transformedJobs.map(async (job: any) => {
-                try {
-                  // jobMatch API 要求 jobTitle/jobDescription/jobLocation 非空，否则返回 400；用占位符避免 DB 缺字段导致整批失败
-                  const jobTitle = (job.title && String(job.title).trim()) || 'Job';
-                  const jobDescription = (job.description && String(job.description).trim()) || (job.summary && String(job.summary).trim()) || (Array.isArray(job.highlights) && job.highlights[0]) || 'No description provided.';
-                  const jobLocation = Array.isArray(job.location) ? job.location.join(', ') : (job.location && String(job.location).trim()) || job.locationRaw || 'Location not specified';
-                  console.log(`[MCP] Calling GPT for job: ${jobTitle}`);
-                  const gptApiUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3002'}/api/gpt-services/jobMatch`;
-                  console.log(`[MCP] GPT API URL: ${gptApiUrl}`);
-                  const matchResponse = await fetch(gptApiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-                      jobTitle,
-                      jobDescription,
-                      jobRequirements: job.requirements || [],
-                      jobLocation,
-                      // ✅ 传入数据库中的完整 tags（复用数据库数据）
-                      skillsMustHave: job.skillsMustHave || [],
-                      skillsNiceToHave: job.skillsNiceToHave || [],
-                      keyRequirements: job.keyRequirements || [],
-                      highlights: job.highlights || [],
-                      workMode: job.workMode || '',
-                      salary: job.salary || '',
-                      industry: job.industry || '',
-                      workRights: job.workRights || undefined,
-                      userProfile: {
-                        jobTitles: requestProfile.jobTitles.length > 0 ? requestProfile.jobTitles : [job.title],
-                        skills: requestProfile.skills,
-                        city: requestProfile.city,
-                        seniority: requestProfile.seniority,
-                        openToRelocate: requestProfile.openToRelocate,
-                        careerPriorities: requestProfile.careerPriorities,
-                        expectedSalary: requestProfile.expectedSalary,
-                        currentPosition: requestProfile.currentPosition,
-                        expectedPosition: requestProfile.expectedPosition,
-                        employmentHistory: requestProfile.employmentHistory,
-                        workingRightsAU: requestProfile.workingRightsAU,
-                        workingRightsOther: requestProfile.workingRightsOther
-                      }
-                    }),
-                  });
-
-                  if (!matchResponse.ok) {
-                    throw new Error(`Match API error: ${matchResponse.status}`);
-                  }
-
-                  const matchData = await matchResponse.json();
-                  
-                  // 添加调试日志 - 使用更明显的格式
-                  console.log(`[MCP] ===== JOB SCORING DEBUG =====`);
-                  console.log(`[MCP] Job Title: ${job.title}`);
-                  console.log(`[MCP] GPT Raw Response:`, matchData);
-                  console.log(`[MCP] Score from GPT: ${matchData.score}`);
-                  console.log(`[MCP] SubScores from GPT:`, matchData.subScores);
-                  console.log(`[MCP] ================================`);
-                  
-                  // 确保分数格式符合GPT要求
-                  const validatedSubScores = {
-                    experience: Math.min(Math.max(matchData.subScores?.experience || 50, 50), 95),
-                    industry: Math.min(Math.max(matchData.subScores?.industry || 50, 50), 95),
-                    skills: Math.min(Math.max(matchData.subScores?.skills || 50, 50), 90), // skills最高90
-                    other: Math.min(Math.max(matchData.subScores?.other || 50, 50), 95)
-                  };
-                  
-                  const validatedMatchScore = Math.min(Math.max(matchData.score || 50, 50), 95);
-                  
-                  console.log(`[MCP] Job ${job.title} - Final Scores:`, {
-                    matchScore: validatedMatchScore,
-                    subScores: validatedSubScores
-                  });
-                  
-                  return {
-                    ...job,
-                    matchScore: validatedMatchScore,
-                    subScores: validatedSubScores,
-                    matchAnalysis: matchData.analysis || 'Analysis not available',
-                    // 优先使用 GPT 返回的 highlights，否则使用数据库字段
-                    matchHighlights: (matchData.highlights && matchData.highlights.length > 0)
-                      ? matchData.highlights
-                      : (job.highlights && job.highlights.length > 0)
-                        ? job.highlights.slice(0, 3)
-                        : (job.keyRequirements && job.keyRequirements.length > 0)
-                          ? job.keyRequirements.slice(0, 3)
-                          : [],
-                    summary: matchData.listSummary || job.summary || `${job.title} position at ${job.company}`,
-                    detailedSummary: matchData.detailedSummary || job.detailedSummary || job.description?.substring(0, 200) + '...',
-                    // ✅ GPT 不返回 keyRequirements（永远是空数组），不覆盖，让 ...job 中的原始值保留
-                    userType: matchData.userType || 'neutral'
-                  };
-                } catch (error) {
-                  console.error(`Error scoring job ${job.id}:`, error);
-                  // 为每个失败的职位生成不同的默认分数，避免所有分数都一样
-                  const randomOffset = Math.floor(Math.random() * 20) - 10; // -10 到 +10 的随机偏移
-                  const baseScore = 60 + randomOffset;
-                  const finalScore = Math.min(Math.max(baseScore, 50), 80);
-                  
-                  return {
-                    ...job,
-                    matchScore: finalScore,
-                    subScores: { 
-                      experience: Math.min(Math.max(55 + randomOffset, 50), 85),
-                      industry: Math.min(Math.max(60 + randomOffset, 50), 85),
-                      skills: Math.min(Math.max(50 + randomOffset, 50), 80),
-                      other: Math.min(Math.max(65 + randomOffset, 50), 85)
-                    },
-                    matchAnalysis: 'Unable to analyze - using fallback scoring',
-                    // 优先使用数据库字段，最后才用默认值
-                    matchHighlights: (job.highlights && job.highlights.length > 0)
-                      ? job.highlights.slice(0, 3)
-                      : (job.keyRequirements && job.keyRequirements.length > 0)
-                        ? job.keyRequirements.slice(0, 3)
-                        : [
-                            `Basic match: ${job.title} position`,
-                            `Location: ${job.location}`,
-                            `Company: ${job.company}`
-                          ],
-                    summary: job.summary || `${job.title} position at ${job.company}`,
-                    detailedSummary: job.detailedSummary || job.description?.substring(0, 200) + '...',
-                    keyRequirements: [],
-                    userType: 'neutral'
-                  };
-                }
-              })
+              transformedJobs.map((job: any) => scoreJobWithJobMatch(job, requestProfile))
             );
             timing.gpt_scoring_ms = Date.now() - t0;
             timing.gpt_calls_count = transformedJobs.length;
@@ -3362,10 +3252,10 @@ export async function POST(request: NextRequest) {
               summary: job.summary || '',  // ✅ 包含 listSummary
             }));
 
-            // ✅ job_cards: list-layer (card) + match_analysis when available; Manus can cache so get_job_detail only supplements.
+            // job_cards: card = list payload; match_analysis = independent dimension for Manus (GPT analysis text). Use get_job_detail for full details.
             const job_cards = recommendedJobs.map((job: any) => ({
               card: buildJobListPayload(job),
-              match_analysis: job.matchAnalysis != null && String(job.matchAnalysis).trim() !== '' ? String(job.matchAnalysis).trim() : undefined,
+              match_analysis: (job.matchAnalysis != null && String(job.matchAnalysis).trim() !== '') ? String(job.matchAnalysis).trim() : undefined,
             }));
 
             // ✅ 使用 buildMarkdownCards 生成卡片（复用已有逻辑）
@@ -3590,6 +3480,7 @@ export async function POST(request: NextRequest) {
             workModeStrict,
             employmentTypeStrict,
             sponsorship_only,
+            emphasis_on_preference = false,
           } = args;
           
           const effectiveRefineLimit = Math.min(50, Math.max(5, Number(limit) || 50));
@@ -3830,7 +3721,7 @@ export async function POST(request: NextRequest) {
             }
             
             // ========================================
-            // 轻量打分（如果有 liked 偏好：「多推荐类似 xx 职位」保留）
+            // 轻量打分（如果有 liked 偏好）：preference_score 仅作排序因子，展示仍用 match 总分
             // ========================================
             if (preferences) {
               scored = scored.map((job: any) => {
@@ -3874,17 +3765,30 @@ export async function POST(request: NextRequest) {
                 
                 return { ...job, personalized_score: Math.min(score, 100) };
               });
-              
-              scored.sort((a: any, b: any) => b.personalized_score - a.personalized_score);
-              console.log('[refine] Applied preference scoring');
             }
             
-            // 转换并做指纹去重（公司+标题+地点），再截取前 N 条；保留 matchScore（约束打分或偏好打分的 personalized_score）
+            // 双分数加权排序：final_score 仅用于排序，展示仍用 match 总分
+            const matchWeight = preferences ? (emphasis_on_preference ? 0.6 : 0.7) : 1;
+            const prefWeight = preferences ? (emphasis_on_preference ? 0.4 : 0.3) : 0;
+            scored.sort((a: any, b: any) => {
+              const ma = (a.matchScore != null && typeof a.matchScore === 'number') ? a.matchScore : 50;
+              const mb = (b.matchScore != null && typeof b.matchScore === 'number') ? b.matchScore : 50;
+              const pa = (a.personalized_score != null && typeof a.personalized_score === 'number') ? a.personalized_score : 0;
+              const pb = (b.personalized_score != null && typeof b.personalized_score === 'number') ? b.personalized_score : 0;
+              const fa = matchWeight * ma + prefWeight * pa;
+              const fb = matchWeight * mb + prefWeight * pb;
+              return fb - fa;
+            });
+            if (preferences) console.log('[refine] Applied preference scoring and weighted sort (match + preference)');
+            
+            // 转换并做指纹去重；保留 match_score / preference_score 供后续 JobMatch 与展示
             let transformed = scored.map((job: any) => {
               const out = transformMongoDBJobToFrontendFormat(job);
               if (out) {
-                const score = (job as any).matchScore ?? (job as any).personalized_score;
-                if (typeof score === 'number') (out as any).matchScore = score;
+                const matchScoreVal = (job as any).matchScore;
+                (out as any).match_score = (matchScoreVal != null && typeof matchScoreVal === 'number') ? matchScoreVal : 50;
+                (out as any).preference_score = (job as any).personalized_score;
+                (out as any).matchScore = (out as any).match_score;
               }
               return out;
             }).filter((j: any) => j);
@@ -3897,13 +3801,46 @@ export async function POST(request: NextRequest) {
 
             const results = transformed.slice(0, effectiveRefineLimit);
             
-            console.log(`[refine] Returning ${results.length} refined recommendations`);
+            // 复用 JobMatch 模块：对最终 N 条做 GPT 打分，展示仍用 matchScore（experience 等），不展示 preference
+            const refineUserProfile = (user_profile && Object.keys(user_profile).length > 0)
+              ? {
+                  jobTitles: (user_profile as any).jobTitles?.length ? (user_profile as any).jobTitles : (effectiveJobTitle ? [effectiveJobTitle] : []),
+                  skills: (user_profile as any).skills ?? effectiveSkills,
+                  city: (user_profile as any).city ?? effectiveCity ?? null,
+                  seniority: (user_profile as any).seniority ?? '',
+                  openToRelocate: (user_profile as any).openToRelocate ?? false,
+                  careerPriorities: (user_profile as any).careerPriorities ?? [],
+                  expectedSalary: (user_profile as any).expectedSalary,
+                  currentPosition: (user_profile as any).currentPosition,
+                  expectedPosition: (user_profile as any).expectedPosition,
+                  employmentHistory: (user_profile as any).employmentHistory ?? [],
+                  workingRightsAU: (user_profile as any).workingRightsAU,
+                  workingRightsOther: (user_profile as any).workingRightsOther,
+                }
+              : {
+                  jobTitles: effectiveJobTitle ? [effectiveJobTitle] : [],
+                  skills: effectiveSkills,
+                  city: effectiveCity ?? null,
+                  seniority: '',
+                  openToRelocate: false,
+                  careerPriorities: [],
+                };
+            const jobsWithAnalysis = await Promise.all(
+              results.map((j: any) => scoreJobWithJobMatch(j, refineUserProfile))
+            );
+            const enrichedResults = jobsWithAnalysis.map((j: any, i: number) => ({
+              ...j,
+              preference_score: results[i].preference_score,
+              personalized_score: results[i].preference_score,
+            }));
+
+            console.log(`[refine] Returning ${enrichedResults.length} refined recommendations`);
 
             // ========================================
             // 更新 AgentKit Memory（同步，返回前写入）
             // ========================================
             if (session_id) {
-              const returned_ids = results.map((j: any) => j.id).filter(Boolean);
+              const returned_ids = enrichedResults.map((j: any) => j.id).filter(Boolean);
               try {
                 const memory = new AgentKitMemory();
                 const context = await memory.getContext(session_id);
@@ -3935,14 +3872,14 @@ export async function POST(request: NextRequest) {
               try {
                 const db = await getDb();
                 const output_data = {
-                  recommendations: results.map((job: any) => ({
+                  recommendations: enrichedResults.map((job: any) => ({
                     job_id: job.id,
                     title: job.title,
                     company: job.company,
                     location: job.location,
                     personalized_score: job.personalized_score || 50
                   })),
-                  total: results.length,
+                  total: enrichedResults.length,
                   excluded_count: EXCLUDE_SET.size,
                   preferences_applied: !!preferences
                 };
@@ -3959,7 +3896,7 @@ export async function POST(request: NextRequest) {
                     },
                     $set: { output: output_data, updated_at: new Date() },
                     $addToSet: {
-                      'feedback.shown_jobs': { $each: results.map((j: any) => j.id) },
+                      'feedback.shown_jobs': { $each: enrichedResults.map((j: any) => j.id) },
                       ...(liked_job_ids.length > 0 ? { 'feedback.liked_jobs': { $each: liked_job_ids } } : {}),
                       ...(disliked_job_ids.length > 0 ? { 'feedback.disliked_jobs': { $each: disliked_job_ids } } : {}),
                     }
@@ -3972,9 +3909,9 @@ export async function POST(request: NextRequest) {
             }
             
             // ========================================
-            // 格式化并返回
+            // 格式化并返回（展示规则不变：job card 用 matchScore，文案沿用现有逻辑）
             // ========================================
-            const formatted_jobs = results.map((job: any, index: number) => {
+            const formatted_jobs = enrichedResults.map((job: any, index: number) => {
               const score_text = preferences && job.personalized_score 
                 ? `🎯 Personalized Score: ${job.personalized_score}%\n` 
                 : '';
@@ -3988,8 +3925,8 @@ export async function POST(request: NextRequest) {
             }).join('\n');
             
             const summary = preferences 
-              ? `Based on your preferences, here are ${results.length} new personalized recommendations (excluded ${EXCLUDE_SET.size} previously seen jobs):`
-              : `Here are ${results.length} new recommendations (excluded ${EXCLUDE_SET.size} previously seen jobs):`;
+              ? `Based on your preferences, here are ${enrichedResults.length} new personalized recommendations (excluded ${EXCLUDE_SET.size} previously seen jobs):`
+              : `Here are ${enrichedResults.length} new recommendations (excluded ${EXCLUDE_SET.size} previously seen jobs):`;
             
             const feedback_prompt = `\n\n💡 **Want more?**\n` +
               `- Tell me which jobs you like (e.g., "I like #2 and #4")\n` +
@@ -3997,8 +3934,8 @@ export async function POST(request: NextRequest) {
               `- Ask for full details (e.g., "Show me more about #2", "Tell me more about that role")\n` +
               `- Or say "show me more" to continue`;
             
-            // job_cards: same shape as recommend/search (card + match_analysis); refine has no GPT analysis so match_analysis undefined
-            const job_cards = results.map((j: any) => ({
+            // job_cards: card = list payload; match_analysis = independent dimension for Manus (GPT analysis text)
+            const job_cards = enrichedResults.map((j: any) => ({
               card: buildJobListPayload(j),
               match_analysis: (j.matchAnalysis != null && String(j.matchAnalysis).trim() !== '') ? String(j.matchAnalysis).trim() : undefined,
             }));
@@ -4013,14 +3950,14 @@ export async function POST(request: NextRequest) {
                 }],
                 isError: false,
                 mode: "refine",
-                total: results.length,
+                total: enrichedResults.length,
                 excluded_count: EXCLUDE_SET.size,
                 preferences_applied: !!preferences,
                 isFinal: false,
                 job_cards,
                 meta: {
-                  returned_job_ids: results.map((j: any) => j.id),
-                  index_to_id: results.map((j: any) => j.id),
+                  returned_job_ids: enrichedResults.map((j: any) => j.id),
+                  index_to_id: enrichedResults.map((j: any) => j.id),
                   excluded_breakdown: {
                     from_param: param_excluded_count,
                     from_memory: memory_added_count,
