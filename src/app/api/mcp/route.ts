@@ -3132,7 +3132,11 @@ export async function POST(request: NextRequest) {
             const scoredJobs = await Promise.all(
               transformedJobs.map(async (job: any) => {
                 try {
-                  console.log(`[MCP] Calling GPT for job: ${job.title}`);
+                  // jobMatch API 要求 jobTitle/jobDescription/jobLocation 非空，否则返回 400；用占位符避免 DB 缺字段导致整批失败
+                  const jobTitle = (job.title && String(job.title).trim()) || 'Job';
+                  const jobDescription = (job.description && String(job.description).trim()) || (job.summary && String(job.summary).trim()) || (Array.isArray(job.highlights) && job.highlights[0]) || 'No description provided.';
+                  const jobLocation = Array.isArray(job.location) ? job.location.join(', ') : (job.location && String(job.location).trim()) || job.locationRaw || 'Location not specified';
+                  console.log(`[MCP] Calling GPT for job: ${jobTitle}`);
                   const gptApiUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3002'}/api/gpt-services/jobMatch`;
                   console.log(`[MCP] GPT API URL: ${gptApiUrl}`);
                   const matchResponse = await fetch(gptApiUrl, {
@@ -3141,10 +3145,10 @@ export async function POST(request: NextRequest) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-                      jobTitle: job.title,
-                      jobDescription: job.description || '',
+                      jobTitle,
+                      jobDescription,
                       jobRequirements: job.requirements || [],
-                      jobLocation: Array.isArray(job.location) ? job.location.join(', ') : job.location,
+                      jobLocation,
                       // ✅ 传入数据库中的完整 tags（复用数据库数据）
                       skillsMustHave: job.skillsMustHave || [],
                       skillsNiceToHave: job.skillsNiceToHave || [],
@@ -3283,6 +3287,39 @@ export async function POST(request: NextRequest) {
               subScores: job.subScores || null,
               summary: job.summary || '',  // ✅ 包含 listSummary
             }));
+
+            // ✅ job_cards：给 Manus 的结构化展示层（card 极简，detail 完整，字段与现有一致）
+            const job_cards = recommendedJobs.map((job: any) => {
+              const id = String(job._id || job.id || job.jobIdentifier || '');
+              const jobUrl = job.jobUrl || job.url || '';
+              const highlights = (job.matchHighlights && job.matchHighlights.length > 0 ? job.matchHighlights : job.highlights) || [];
+              return {
+                card: {
+                  id,
+                  title: String(job.title || ''),
+                  company: String(job.company || job.company_name || ''),
+                  location: String(job.location || job.locationRaw || ''),
+                  matchScore: typeof job.matchScore === 'number' ? job.matchScore : null,
+                  highlights_preview: highlights.slice(0, 2),
+                  jobUrl,
+                },
+                detail: {
+                  summary: job.summary || '',
+                  skillsMustHave: job.skillsMustHave || [],
+                  skillsNiceToHave: job.skillsNiceToHave || [],
+                  keyRequirements: job.keyRequirements || [],
+                  highlights,
+                  subScores: job.subScores || null,
+                  industry: job.industry ?? null,
+                  employmentType: job.employmentType || job.employment_type || null,
+                  workMode: job.workMode ?? null,
+                  workRights: job.workRights ?? null,
+                  salary: job.salary ?? null,
+                  matchAnalysis: job.matchAnalysis ?? null,
+                  jobUrl,
+                },
+              };
+            });
 
             // ✅ 使用 buildMarkdownCards 生成卡片（复用已有逻辑）
             const markdownCards = buildMarkdownCards(
@@ -3454,7 +3491,8 @@ export async function POST(request: NextRequest) {
                   index_to_id: recommendedJobs.map(job => job.id),
                   session_id,
                   db_candidates_count: timing.candidates_count
-                }
+                },
+                job_cards,
               }
             }, { "X-MCP-Trace-Id": traceId });
 

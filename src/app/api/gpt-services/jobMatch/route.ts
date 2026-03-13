@@ -5,16 +5,24 @@ export async function POST(request: Request) {
   try {
     const data = await request.json();
     
-    // 验证必要的字段
-    if (!data.jobTitle || !data.jobDescription || !data.jobRequirements || !data.jobLocation || !data.userProfile) {
+    // 必填：jobTitle、userProfile；其余缺省时用占位值，避免 DB 缺字段导致 400
+    if (!data.userProfile || typeof data.userProfile !== 'object') {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: userProfile' },
         { status: 400 }
       );
     }
+    const payload = {
+      ...data,
+      jobTitle: (data.jobTitle && String(data.jobTitle).trim()) || 'Job',
+      jobDescription: (data.jobDescription && String(data.jobDescription).trim()) || (data.summary && String(data.summary).trim()) || 'No description provided.',
+      jobRequirements: Array.isArray(data.jobRequirements) ? data.jobRequirements : [],
+      jobLocation: (data.jobLocation && String(data.jobLocation).trim()) || 'Location not specified',
+      userProfile: data.userProfile,
+    };
 
     // 调用 GPT 服务
-    const result = await matchJobWithGPT(data);
+    const result = await matchJobWithGPT(payload);
     
     return NextResponse.json(result);
   } catch (error) {
