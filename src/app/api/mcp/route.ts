@@ -1221,10 +1221,10 @@ export async function POST(request: NextRequest) {
               },
               limit: {
                 type: "integer",
-                default: 10,
+                default: 50,
                 minimum: 5,
-                maximum: 20,
-                description: "Number of recent jobs to analyze (default 10, max 20)"
+                maximum: 100,
+                description: "Requested max jobs. Actual count is capped by profile stage: recommendable (job_title/city only) → up to 10; enhanced (+ skills or experience) → up to 50; auto_apply_ready (+ employmentHistory) → up to 100. Response meta includes profile_stage."
               },
               use_chat_context: {
                 type: "boolean",
@@ -1239,7 +1239,7 @@ export async function POST(request: NextRequest) {
               source: {
                 type: "string",
                 enum: ["manus", "gpt", "hera_web"],
-                description: "Caller source. When 'manus' and profile is complete (jobTitles/expectedPosition + skills), returns exactly 50 jobs for batch apply."
+                description: "Caller: 'manus' | 'gpt' | 'hera_web'. hera_web gets up to 500. Result count 10/50/100 is by profile completeness (see limit description)."
               },
               industry: { type: "string", description: "Optional. Filter by job industry (e.g. Technology, Finance)." },
               skills: { type: "array", items: { type: "string" }, description: "Optional. Filter jobs that have any of these skills in topSkills/skillsMust/skillsNice." },
@@ -2877,7 +2877,7 @@ export async function POST(request: NextRequest) {
             user_profile = {}, 
             job_title, 
             city, 
-            limit = 10, 
+            limit = 50, 
             use_chat_context = true, 
             strict_filters = true,
             session_id,      // Phase 2: 用于后台统计
@@ -2951,25 +2951,23 @@ export async function POST(request: NextRequest) {
           const searchCriteria = determineSearchCriteria();
           console.log('[MCP] Search criteria determined:', searchCriteria);
           
-          // 构建用户档案，保持现有的简历解析逻辑
-          const defaultProfile = {
-            skills: user_profile.skills && user_profile.skills.length > 0 ? user_profile.skills : ['General Skills', 'Problem Solving', 'Communication'],
-            city: searchCriteria.city || null,
-            seniority: user_profile.seniority || 'Mid',
-            jobTitles: user_profile.jobTitles && user_profile.jobTitles.length > 0 ? user_profile.jobTitles : ['General Professional'],
-            openToRelocate: user_profile.openToRelocate || false,
-            careerPriorities: user_profile.careerPriorities && user_profile.careerPriorities.length > 0 ? user_profile.careerPriorities : ['Career Growth', 'Work-Life Balance'],
-            expectedSalary: user_profile.expectedSalary || 'Medium',
-            currentPosition: user_profile.currentPosition || 'Professional',
-            expectedPosition: user_profile.expectedPosition || 'Senior Professional',
-            employmentHistory: user_profile.employmentHistory && user_profile.employmentHistory.length > 0 ? user_profile.employmentHistory : [
-              { company: 'Previous Company', position: 'Professional Role' }
-            ],
-            workingRightsAU: user_profile.workingRightsAU || undefined,
-            workingRightsOther: user_profile.workingRightsOther || undefined
+          // 仅用传入数据，不塞假 profile；用于 Match API 和日志
+          const requestProfile = {
+            skills: (user_profile?.skills && user_profile.skills.length > 0) ? user_profile.skills : (Array.isArray(skills) ? skills : []),
+            city: searchCriteria.city || user_profile?.city || null,
+            seniority: user_profile?.seniority ?? undefined,
+            jobTitles: (user_profile?.jobTitles?.length) ? user_profile.jobTitles : (searchCriteria.jobTitle ? [searchCriteria.jobTitle] : []),
+            openToRelocate: user_profile?.openToRelocate ?? false,
+            careerPriorities: user_profile?.careerPriorities ?? [],
+            expectedSalary: user_profile?.expectedSalary ?? undefined,
+            currentPosition: user_profile?.currentPosition ?? undefined,
+            expectedPosition: user_profile?.expectedPosition ?? undefined,
+            employmentHistory: user_profile?.employmentHistory ?? [],
+            workingRightsAU: user_profile?.workingRightsAU,
+            workingRightsOther: user_profile?.workingRightsOther
           };
           
-          console.log('[MCP] recommend_jobs - Final profile:', JSON.stringify(defaultProfile, null, 2));
+          console.log('[MCP] recommend_jobs - request profile (no fake data):', JSON.stringify(requestProfile, null, 2));
 
           const timing: Record<string, number> = {};
           const tRecommendStart = Date.now();
@@ -3157,18 +3155,18 @@ export async function POST(request: NextRequest) {
                       industry: job.industry || '',
                       workRights: job.workRights || undefined,
                       userProfile: {
-                        jobTitles: defaultProfile.jobTitles.length > 0 ? defaultProfile.jobTitles : [job.title],
-                        skills: defaultProfile.skills,
-                        city: defaultProfile.city,
-                        seniority: defaultProfile.seniority,
-                        openToRelocate: defaultProfile.openToRelocate,
-                        careerPriorities: defaultProfile.careerPriorities,
-                        expectedSalary: defaultProfile.expectedSalary,
-                        currentPosition: defaultProfile.currentPosition,
-                        expectedPosition: defaultProfile.expectedPosition,
-                        employmentHistory: defaultProfile.employmentHistory,
-                        workingRightsAU: defaultProfile.workingRightsAU,
-                        workingRightsOther: defaultProfile.workingRightsOther
+                        jobTitles: requestProfile.jobTitles.length > 0 ? requestProfile.jobTitles : [job.title],
+                        skills: requestProfile.skills,
+                        city: requestProfile.city,
+                        seniority: requestProfile.seniority,
+                        openToRelocate: requestProfile.openToRelocate,
+                        careerPriorities: requestProfile.careerPriorities,
+                        expectedSalary: requestProfile.expectedSalary,
+                        currentPosition: requestProfile.currentPosition,
+                        expectedPosition: requestProfile.expectedPosition,
+                        employmentHistory: requestProfile.employmentHistory,
+                        workingRightsAU: requestProfile.workingRightsAU,
+                        workingRightsOther: requestProfile.workingRightsOther
                       }
                     }),
                   });

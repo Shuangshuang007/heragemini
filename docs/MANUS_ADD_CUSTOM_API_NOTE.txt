@@ -1,0 +1,30 @@
+Hera MCP – Job recommendations and apply flow for Manus
+
+Base URL (required): https://www.heraai.net.au
+• Use exactly this URL (with "www"). Do not use https://heraai.net.au (no www) — that causes a redirect and breaks Bearer auth.
+
+Endpoint: POST https://www.heraai.net.au/api/mcp
+
+Authentication: Bearer token.
+• In Secrets (Env Vars) above, set e.g. Secret name: MCP_SHARED_SECRET, Value: <your token> (same value as the server's MCP_SHARED_SECRET).
+• When calling this API, send header: Authorization: Bearer <value of that secret>. So the secret's value IS the Bearer token — there is no separate "Bearer token" field; use the env var value in the Authorization header.
+
+Protocol: JSON-RPC 2.0. Content-Type: application/json.
+
+Methods:
+• initialize — server info and capabilities
+• tools/list — returns all available tools (call this to discover tools)
+• tools/call — execute a tool; params: { name: "<tool_name>", arguments: { ... } }
+
+When to use this API:
+• Get job recommendations for a user (recommend_jobs).
+• When user selects a job to apply via Manus: call create_application_intent(user_email, job_id) to get application_id, then call prepare_application_context(user_email, application_id) to get prompt_snippet, job_snapshot, and submit_policy for the apply task.
+• Other tools: search_jobs, job_alert, tailor_resume, get_user_applications, career_transition_advice, etc. — use tools/list to see full list and schemas.
+
+recommend_jobs result count (10 / 50 / 100):
+• Up to 10: when you only pass job_title and/or city (recommendable).
+• Up to 50: when you also pass user_profile with skills or experience (enhanced_recommendation).
+• Up to 100: when you also pass user_profile.employmentHistory (auto_apply_ready).
+Response meta includes profile_stage and returned_job_ids. Pass workMode, industry, skills, employmentType when the user mentions them for better matching (see tools/list schema).
+
+Apply flow order: recommend_jobs → user picks job → create_application_intent → prepare_application_context(application_id) → use returned context in Manus task.
