@@ -2467,7 +2467,10 @@ export async function POST(request: NextRequest) {
               topJobs.length
             );
 
-            const job_cards = topJobs.map((j: any) => ({ card: buildJobListPayload(j) }));
+            const job_cards = topJobs.map((j: any) => ({
+              card: buildJobListPayload(j),
+              match_analysis: (j.matchAnalysis != null && String(j.matchAnalysis).trim() !== '') ? String(j.matchAnalysis).trim() : undefined,
+            }));
 
             return new Response(JSON.stringify({
               jsonrpc: "2.0",
@@ -3359,9 +3362,10 @@ export async function POST(request: NextRequest) {
               summary: job.summary || '',  // ✅ 包含 listSummary
             }));
 
-            // ✅ job_cards: list-layer only (shared module, aligned with main site Job List). Use get_job_detail for full details.
+            // ✅ job_cards: list-layer (card) + match_analysis when available; Manus can cache so get_job_detail only supplements.
             const job_cards = recommendedJobs.map((job: any) => ({
               card: buildJobListPayload(job),
+              match_analysis: job.matchAnalysis != null && String(job.matchAnalysis).trim() !== '' ? String(job.matchAnalysis).trim() : undefined,
             }));
 
             // ✅ 使用 buildMarkdownCards 生成卡片（复用已有逻辑）
@@ -3993,8 +3997,11 @@ export async function POST(request: NextRequest) {
               `- Ask for full details (e.g., "Show me more about #2", "Tell me more about that role")\n` +
               `- Or say "show me more" to continue`;
             
-            // job_cards: list-layer only (same module as recommend_jobs, main-site aligned)
-            const job_cards = results.map((j: any) => ({ card: buildJobListPayload(j) }));
+            // job_cards: same shape as recommend/search (card + match_analysis); refine has no GPT analysis so match_analysis undefined
+            const job_cards = results.map((j: any) => ({
+              card: buildJobListPayload(j),
+              match_analysis: (j.matchAnalysis != null && String(j.matchAnalysis).trim() !== '') ? String(j.matchAnalysis).trim() : undefined,
+            }));
 
             return json200({
               jsonrpc: "2.0",
