@@ -96,7 +96,8 @@ export function buildJobListPayload(job: any): JobListPayload {
 }
 
 // ----- Detail layer (on-demand: show more / get_job_detail) -----
-// Exactly what JobDetailPanel displays. No description (panel does not show it).
+// Same shape as main site: GET /api/jobs/[id] returns transform(enrichedJob); enrichedJob includes
+// matchAnalysis/detailedSummary when GPT (analyzeJobWithGPT) runs. No description (panel does not show raw description).
 // Single source of truth: GET /api/jobs/[id] and MCP get_job_detail both use buildJobDetailPayload.
 
 export interface JobDetailPayload {
@@ -110,6 +111,8 @@ export interface JobDetailPayload {
   matchScore?: number;
   subScores?: { experience?: number; industry?: number; skills?: number; other?: number };
   summary?: string;
+  detailedSummary?: string;
+  matchAnalysis?: string;
   workMode?: string;
   salary?: string;
   skillsMustHave: string[];
@@ -124,8 +127,8 @@ export interface JobDetailPayload {
 }
 
 /**
- * Build detail payload from a job (frontend format or DB). Only fields that JobDetailPanel uses.
- * Used by GET /api/jobs/[id] and MCP get_job_detail so main site and Manus receive identical shape.
+ * Build detail payload from a job (frontend format or DB). Aligned with main site:
+ * main site calls analyzeJobWithGPT when needed, then transform(enrichedJob); we output same fields.
  */
 export function buildJobDetailPayload(job: any): JobDetailPayload | null {
   if (!job) return null;
@@ -151,6 +154,8 @@ export function buildJobDetailPayload(job: any): JobDetailPayload | null {
     matchScore: typeof job.matchScore === 'number' ? job.matchScore : undefined,
     subScores: job.subScores && typeof job.subScores === 'object' ? job.subScores : undefined,
     summary: job.summary != null ? String(job.summary).trim() : undefined,
+    detailedSummary: job.detailedSummary != null ? String(job.detailedSummary).trim() : undefined,
+    matchAnalysis: job.matchAnalysis != null ? String(job.matchAnalysis).trim() : undefined,
     workMode: job.workMode != null ? String(job.workMode).trim() : undefined,
     salary: job.salary != null ? String(job.salary).trim() : undefined,
     skillsMustHave: toArray(job.skillsMustHave ?? job.skillsMust),
