@@ -1226,6 +1226,12 @@ export async function POST(request: NextRequest) {
                 maximum: 100,
                 description: "Requested max jobs. Actual count is capped by profile stage: recommendable (job_title/city only) → up to 10; enhanced (+ skills or experience) → up to 50; auto_apply_ready (+ employmentHistory) → up to 100. Response meta includes profile_stage."
               },
+              page_size: {
+                type: "integer",
+                minimum: 10,
+                maximum: 100,
+                description: "Optional. Max jobs to return in this batch (one-shot card display). Pass 50 or 100 so Manus can render all cards at once. Still capped by profile stage (recommendable max 10, enhanced max 50, auto_apply_ready max 100). When provided, effective count = min(profile_stage_limit, page_size)."
+              },
               use_chat_context: {
                 type: "boolean",
                 default: true,
@@ -2878,6 +2884,7 @@ export async function POST(request: NextRequest) {
             job_title, 
             city, 
             limit = 50, 
+            page_size: pageSizeArg,  // 可选，本批最多返回条数（一次性展示 50/100 用）
             use_chat_context = true, 
             strict_filters = true,
             session_id,      // Phase 2: 用于后台统计
@@ -2910,11 +2917,13 @@ export async function POST(request: NextRequest) {
           // Advanced / web mode: up to 500 (hera_web only)
           const isAdvancedMode = effectiveCaller === 'hera_web';
           const stageLimit = profileStage === 'auto_apply_ready' ? 100 : profileStage === 'enhanced_recommendation' ? 50 : 10;
-          const effectiveLimit = isAdvancedMode ? Math.min(Math.max(limit, 1), 500) : (profileStage === 'recommendable' ? Math.min(limit, 10) : stageLimit);
+          // page_size：本批希望返回的最大条数（Manus 一次性展示 50/100 用）；未传则用 limit；仍受 profile 阶段上限约束
+          const requestedMax = pageSizeArg != null ? Math.min(100, Math.max(10, Number(pageSizeArg))) : limit;
+          const effectiveLimit = isAdvancedMode ? Math.min(Math.max(limit, 1), 500) : Math.min(stageLimit, requestedMax);
           
           console.log('[MCP] recommend_jobs - exclude_ids:', exclude_ids.length);
-          console.log('[MCP] recommend_jobs - profile_stage:', profileStage, 'effective_limit:', effectiveLimit, 'is_advanced:', isAdvancedMode);
-          console.log('[MCP] recommend_jobs - Input args:', { job_title, city, limit, use_chat_context, strict_filters, session_id, user_email, has_fc: !!fc });
+          console.log('[MCP] recommend_jobs - profile_stage:', profileStage, 'effective_limit:', effectiveLimit, 'page_size:', pageSizeArg ?? '(none)', 'is_advanced:', isAdvancedMode);
+          console.log('[MCP] recommend_jobs - Input args:', { job_title, city, limit, page_size: pageSizeArg, use_chat_context, strict_filters, session_id, user_email, has_fc: !!fc });
           
           // 信息优先级处理：对话明确信息 > 简历解析信息 > 默认值
           const determineSearchCriteria = () => {

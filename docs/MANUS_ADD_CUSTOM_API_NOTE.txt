@@ -27,4 +27,7 @@ recommend_jobs result count (10 / 50 / 100):
 • Up to 100: when you also pass user_profile.employmentHistory (auto_apply_ready).
 Response meta includes profile_stage and returned_job_ids. Pass workMode, industry, skills, employmentType when the user mentions them for better matching (see tools/list schema).
 
+One-shot card display (50 or 100 cards at once):
+• Pass page_size=50 or page_size=100 so this batch returns up to that many jobs (still capped by profile stage above). Use result.job_cards for the full list; content[0].text only previews the first 5 in Markdown.
+
 Apply flow order: recommend_jobs → user picks job → create_application_intent → prepare_application_context(application_id) → use returned context in Manus task.
