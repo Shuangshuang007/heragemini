@@ -1146,7 +1146,7 @@ export async function POST(request: NextRequest) {
         },
         {
           name: "recommend_jobs",
-          description: "🎯 PERSONALIZED JOB RECOMMENDATIONS - Use this for AI-powered job matching!\n\n✅ ALWAYS use this tool when user:\n• Says 'recommend jobs', 'suggest jobs', 'job advice', 'match me', 'help me find jobs'\n• Provides resume, profile, experience, skills, or career context\n• Asks for 'jobs that match my background' or 'jobs for me'\n• Mentions seniority level, career priorities, or preferences\n• Wants personalized job suggestions based on their profile\n• Uploads a resume or provides detailed career information\n• Says 'recommend [target career] jobs' after career_transition_advice (extract target career from context)\n• References a career from previous career transition analysis (e.g., 'recommend the first one', 'jobs for Product Manager')\n• Asks 'what jobs are available for [career name]' after discussing career transitions\n\n🎯 This tool performs intelligent job matching by:\n• Analyzing user's resume/profile and career context\n• Using explicit job_title/city if provided, otherwise inferring from resume (expectedPosition/cityPreference)\n• Searching database with determined filters\n• Scoring jobs based on experience, skills, industry fit\n• Returning top personalized recommendations with detailed match scores\n• Informing user when using resume inference for job targeting\n\n💡 Context Integration:\n• If user mentioned a career transition context, extract the target career (from candidates.to in career_transition_advice results) and use as job_title\n• If user uploaded resume, extract user_profile from resume parsing (skills, experience, city, etc.)\n• If no resume, build user_profile from conversation context (current job, experience, location mentioned)\n\n📝 Examples:\n• 'Recommend jobs for me based on my resume' → Uses resume expectedPosition\n• 'Suggest business analyst roles in Melbourne' → Uses explicit job_title + city\n• 'What jobs match my 5 years React experience in Sydney?' → Uses explicit criteria\n• 'Help me find data analyst positions' → Uses explicit job_title\n• 'I'm a senior developer, recommend suitable roles' → Uses profile context\n• After career_transition_advice returned 'Product Manager' as candidate: 'Recommend Product Manager jobs' → job_title='Product Manager'\n• 'Show me jobs for the second career option' → Extract target career from previous context, use as job_title\n• 'What positions are available for Data Analyst in Sydney?' → job_title='Data Analyst', city='Sydney'\n\n📌 Parameter extraction from natural language (fill job_title, city, work_mode, employment_type when user mentions them):\n• User: \"software engineer in New York 2 day onsite\" → job_title=\"software engineer\", city=\"New York\", workMode=\"onsite\"\n• User: \"remote full time product manager\" → job_title=\"product manager\", workMode=\"remote\", employmentType=\"full time\"\n\n⚠️ NEVER call search_jobs after this tool - it provides complete results",
+          description: "🎯 PERSONALIZED JOB RECOMMENDATIONS - Use this for AI-powered job matching!\n\n✅ ALWAYS use this tool when user:\n• Says 'recommend jobs', 'suggest jobs', 'job advice', 'match me', 'help me find jobs'\n• Provides resume, profile, experience, skills, or career context\n• Asks for 'jobs that match my background' or 'jobs for me'\n• Mentions seniority level, career priorities, or preferences\n• Wants personalized job suggestions based on their profile\n• Uploads a resume or provides detailed career information\n• Says 'recommend [target career] jobs' after career_transition_advice (extract target career from context)\n• References a career from previous career transition analysis (e.g., 'recommend the first one', 'jobs for Product Manager')\n• Asks 'what jobs are available for [career name]' after discussing career transitions\n\n🎯 This tool performs intelligent job matching by:\n• Analyzing user's resume/profile and career context\n• Using explicit job_title/city if provided, otherwise inferring from resume (expectedPosition/cityPreference)\n• Searching database with determined filters\n• Scoring jobs based on experience, skills, industry fit\n• Returning top personalized recommendations with detailed match scores\n• Informing user when using resume inference for job targeting\n\n💡 Context Integration:\n• If user mentioned a career transition context, extract the target career (from candidates.to in career_transition_advice results) and use as job_title\n• If user uploaded resume, extract user_profile from resume parsing (skills, experience, city, etc.)\n• If no resume, build user_profile from conversation context (current job, experience, location mentioned)\n\n📝 Examples:\n• 'Recommend jobs for me based on my resume' → Uses resume expectedPosition\n• 'Suggest business analyst roles in Melbourne' → Uses explicit job_title + city\n• 'What jobs match my 5 years React experience in Sydney?' → Uses explicit criteria\n• 'Help me find data analyst positions' → Uses explicit job_title\n• 'I'm a senior developer, recommend suitable roles' → Uses profile context\n• After career_transition_advice returned 'Product Manager' as candidate: 'Recommend Product Manager jobs' → job_title='Product Manager'\n• 'Show me jobs for the second career option' → Extract target career from previous context, use as job_title\n• 'What positions are available for Data Analyst in Sydney?' → job_title='Data Analyst', city='Sydney'\n\n📌 Parameter extraction from natural language (fill job_title, city, work_mode, employment_type when user mentions them):\n• User: \"software engineer in New York 2 day onsite\" → job_title=\"software engineer\", city=\"New York\", workMode=\"onsite\"\n• User: \"remote full time product manager\" → job_title=\"product manager\", workMode=\"remote\", employmentType=\"full time\"\n\n⚠️ NEVER call search_jobs after this tool - it provides complete results.\n\n📦 Result shape: result.job_cards (array). Each entry has card (list/summary), detail (full dimensions). When manus=true (default), each entry also includes job_detail for Manus to render the Job Detail card.",
           inputSchema: {
             type: "object",
             properties: {
@@ -1252,7 +1252,12 @@ export async function POST(request: NextRequest) {
               workModeStrict: { type: "boolean", description: "Optional. Set true when user says 'only onsite', 'must be remote', etc. Then workMode is applied as hard filter in DB query; otherwise workMode is soft scoring only." },
               employmentTypeStrict: { type: "boolean", description: "Optional. Set true when user says 'only full time', 'must be part time', etc. Then employmentType is applied as hard filter in DB query; otherwise employmentType is soft scoring only." },
               company: { type: "string", description: "Optional. When set, only return jobs at this company (company-only search). job_title/city can be omitted when company is provided." },
-              sponsorship_only: { type: "boolean", description: "Optional. If true, only return jobs that offer or require sponsorship (workRights.sponsorship available/required)." }
+              sponsorship_only: { type: "boolean", description: "Optional. If true, only return jobs that offer or require sponsorship (workRights.sponsorship available/required)." },
+              manus: {
+                type: "boolean",
+                default: true,
+                description: "When true (default), each entry in result.job_cards includes a job_detail object with full dimensions for Manus to render the Job Detail card. Use job_detail for the detail view. Set false to omit job_detail."
+              }
             },
             required: ["user_profile"],
             additionalProperties: false
@@ -2897,6 +2902,7 @@ export async function POST(request: NextRequest) {
             employmentTypeStrict,
             sponsorship_only,
             company: companyArg,
+            manus = true,  // 默认 true：每条 job_cards 含 job_detail，供 Manus 渲染详情卡
           } = args;
           // Caller: args.source takes precedence; else X-Caller header (for Manus Customer API); else 'gpt'
           const effectiveCaller = (argsSource || request.headers.get('x-caller')?.toLowerCase() || 'gpt').toLowerCase();
@@ -3295,12 +3301,27 @@ export async function POST(request: NextRequest) {
               summary: job.summary || '',  // ✅ 包含 listSummary
             }));
 
-            // ✅ job_cards：给 Manus 的结构化展示层（card 极简，detail 完整，字段与现有一致）
+            // ✅ job_cards：给 Manus 的结构化展示层（card 极简，detail 完整；manus 为 true 时多带 job_detail 供详情卡渲染）
             const job_cards = recommendedJobs.map((job: any) => {
               const id = String(job._id || job.id || job.jobIdentifier || '');
               const jobUrl = job.jobUrl || job.url || '';
               const highlights = (job.matchHighlights && job.matchHighlights.length > 0 ? job.matchHighlights : job.highlights) || [];
-              return {
+              const detailPayload = {
+                summary: job.summary || '',
+                skillsMustHave: job.skillsMustHave || [],
+                skillsNiceToHave: job.skillsNiceToHave || [],
+                keyRequirements: job.keyRequirements || [],
+                highlights,
+                subScores: job.subScores || null,
+                industry: job.industry ?? null,
+                employmentType: job.employmentType || job.employment_type || null,
+                workMode: job.workMode ?? null,
+                workRights: job.workRights ?? null,
+                salary: job.salary ?? null,
+                matchAnalysis: job.matchAnalysis ?? null,
+                jobUrl,
+              };
+              const entry: { card: any; detail: any; job_detail?: any } = {
                 card: {
                   id,
                   title: String(job.title || ''),
@@ -3310,22 +3331,12 @@ export async function POST(request: NextRequest) {
                   highlights_preview: highlights.slice(0, 2),
                   jobUrl,
                 },
-                detail: {
-                  summary: job.summary || '',
-                  skillsMustHave: job.skillsMustHave || [],
-                  skillsNiceToHave: job.skillsNiceToHave || [],
-                  keyRequirements: job.keyRequirements || [],
-                  highlights,
-                  subScores: job.subScores || null,
-                  industry: job.industry ?? null,
-                  employmentType: job.employmentType || job.employment_type || null,
-                  workMode: job.workMode ?? null,
-                  workRights: job.workRights ?? null,
-                  salary: job.salary ?? null,
-                  matchAnalysis: job.matchAnalysis ?? null,
-                  jobUrl,
-                },
+                detail: detailPayload,
               };
+              if (manus) {
+                entry.job_detail = detailPayload;
+              }
+              return entry;
             });
 
             // ✅ 使用 buildMarkdownCards 生成卡片（复用已有逻辑）

@@ -30,4 +30,7 @@ Response meta includes profile_stage and returned_job_ids. Pass workMode, indust
 One-shot card display (50 or 100 cards at once):
 • Pass page_size=50 or page_size=100 so this batch returns up to that many jobs (still capped by profile stage above). Use result.job_cards for the full list; content[0].text only previews the first 5 in Markdown.
 
+Job Detail card (Manus):
+• recommend_jobs accepts manus (default true). When true, each result.job_cards[i] includes job_detail with the same dimensions as detail (summary, skillsMustHave, skillsNiceToHave, keyRequirements, highlights, subScores, industry, employmentType, workMode, workRights, salary, matchAnalysis, jobUrl). Use job_detail for rendering the full Job Detail card; card is for list/summary view.
+
 Apply flow order: recommend_jobs → user picks job → create_application_intent → prepare_application_context(application_id) → use returned context in Manus task.
