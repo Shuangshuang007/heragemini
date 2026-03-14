@@ -381,7 +381,7 @@ Return JSON ONLY, no extra text, in this exact format:
     listSummary: matchSummary, // 使用 matchSummary 作为 listSummary
     detailedSummary: '', // 列表视图不再需要 detailedSummary
     keyRequirements: [], // 列表视图不再需要 keyRequirements
-    analysis: '' // 列表视图不再需要详细 analysis
+    analysis: matchSummary
   };
 }
 

@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { Suspense, useEffect, useState, useRef } from "react";
+import { useSearchParams } from "next/navigation";
+import { signIn, useSession } from "next-auth/react";
 import { Logo } from "@/components/Logo";
 import Link from "next/link";
 import { ApplicationJobCard } from "@/components/ApplicationJobCard";
@@ -62,7 +64,8 @@ interface UserProfile {
   }>;
 }
 
-export default function ApplicationsPage() {
+function ApplicationsPageContent() {
+  const searchParams = useSearchParams();
   const [language, setLanguage] = useState<'en' | 'zh'>('en');
   const [applications, setApplications] = useState<Application[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -70,11 +73,32 @@ export default function ApplicationsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  
+  const manusMagicLinkHandled = useRef(false);
+
   // 使用Premium状态hook
   const premiumStatus = usePremiumStatus();
-  
+  const { data: session, status: sessionStatus } = useSession();
 
+  // Manus magic link: ?manus_token=xxx → sign in with token, then clean URL
+  useEffect(() => {
+    const token = searchParams?.get("manus_token");
+    if (!token || manusMagicLinkHandled.current) return;
+    manusMagicLinkHandled.current = true;
+    (async () => {
+      if (typeof window !== "undefined") {
+        window.history.replaceState(null, "", window.location.pathname || "/applications");
+      }
+      const res = await signIn("manus-magic-link", {
+        token,
+        callbackUrl: "/applications",
+        redirect: true,
+      });
+      if (res?.error) {
+        setError("Login link expired or invalid. Please try again from Manus.");
+        manusMagicLinkHandled.current = false;
+      }
+    })();
+  }, [searchParams]);
 
   // 获取用户Profile、Applications数据和SavedJobs
   useEffect(() => {
@@ -95,19 +119,20 @@ export default function ApplicationsPage() {
           }
         }
         
-        // 从localStorage获取用户email
+        // Email: from session (e.g. magic link) or from localStorage userProfile
+        let email: string | null = null;
         const userProfileStr = localStorage.getItem('userProfile');
-        if (!userProfileStr) {
-          setError('User profile not found. Please log in first.');
-          setIsLoading(false);
-          return;
+        if (userProfileStr) {
+          try {
+            const localProfile = JSON.parse(userProfileStr);
+            email = localProfile?.email || null;
+          } catch {}
         }
-        
-        const localProfile = JSON.parse(userProfileStr);
-        const email = localProfile.email;
-        
+        if (!email && session?.user?.email) {
+          email = session.user.email;
+        }
         if (!email) {
-          setError('User email not found. Please complete your profile.');
+          setError('User profile not found. Please log in first.');
           setIsLoading(false);
           return;
         }
@@ -146,8 +171,10 @@ export default function ApplicationsPage() {
       }
     };
 
+    // Wait for session to settle when using magic link (no localStorage yet)
+    if (sessionStatus === 'loading') return;
     fetchData();
-  }, []);
+  }, [sessionStatus, session?.user?.email, retryCount]);
 
   // 列表以 profile.applications 为主，再合并 savedJobs（不在 applications 中的）
   const applicationJobIds = new Set(applications.map((a) => a.jobId));
@@ -414,4 +441,12 @@ function getPlatformSearchUrl(job: { platform: string; title: string }) {
     default:
       return '#';
   }
+}
+
+export default function ApplicationsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <ApplicationsPageContent />
+    </Suspense>
+  );
 } 

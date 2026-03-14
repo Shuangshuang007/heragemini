@@ -143,6 +143,26 @@ export async function upsertUserProfile(profileData: Partial<UserProfile>): Prom
   }
 }
 
+/**
+ * Ensure a profile exists for the given email (Manus-originated: email-only).
+ * If no profile exists, create a minimal one so we can write applications.
+ */
+export async function ensureProfileForEmail(email: string): Promise<boolean> {
+  const trimmed = String(email || '').trim();
+  if (!trimmed) return false;
+  const existing = await getUserProfile(trimmed);
+  if (existing) return true;
+  const now = new Date();
+  return upsertUserProfile({
+    email: trimmed,
+    registeredEmail: trimmed,
+    firstName: '',
+    lastName: '',
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 // 获取用户Profile
 export async function getUserProfile(email: string): Promise<UserProfile | null> {
   try {

@@ -58,6 +58,12 @@
 - 用户打开 Hera 主站 **/applications** 可看到：Job Title、Job Details、Apply Link、Start Application（Manus 调过 prepare 则显示绿色「Application Started」）、Tailor Application、Application Status、Hiring Status。
 - 列表**以 profile.applications 为主**（有记录即显示，含仅由 Manus 回传产生的记录），再合并主站「已保存职位」；被用户「不要 #x」的会软删除（excluded），不展示。
 
+### 6.1 对话内摘要与跳转 Hera 免登（方案 A）
+
+- Manus 对话内可展示投递摘要：总投递数、成功/失败（含原因）、最近 1 天列表；文末一句「管理完整投递记录请前往 Hera」+ 可点击链接。
+- **get_user_applications**：Manus 直接调用即可得到上述摘要所需数据，无需新接口。
+- **跳转免登**：Manus 调用 Hera 的 **generate_magic_link(user_email)**（MCP 工具），将返回的 URL 作为「点击跳转」链接；用户点击后在 Hera 用短期 token 自动登录，进入 /applications，无需再输密码。实施步骤与测试见 `MANUS_HERA_IMPLEMENTATION_ROADMAP.md`。
+
 ---
 
 ## 7. record_apply_result 入参一览
@@ -87,6 +93,7 @@ node scripts/test_manus_integration_pre.js
 
 ## 9. 参考文档
 
+- **实施路线图（按步骤、含摘要与免登）**：`MANUS_HERA_IMPLEMENTATION_ROADMAP.md` — 从「推荐/多轮职位」到「Interested + 对话内摘要与跳转 Hera 免登（方案 A）」再到「Bulk Apply」的完整步骤与测试。
 - 完整对接与字段说明：`MANUS_HERA_APPLICATIONS_INTEGRATION_SPEC.md`  
 - 开始申请前基本问题：`MANUS_PRE_APPLY_QUESTIONS_CHECKLIST.md`  
 - 现有 MCP 使用说明：`MANUS_ADD_CUSTOM_API_NOTE.txt`  

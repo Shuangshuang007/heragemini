@@ -2,7 +2,9 @@ import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import GitHubProvider from "next-auth/providers/github";
 import LinkedInProvider from "next-auth/providers/linkedin";
+import CredentialsProvider from "next-auth/providers/credentials";
 import { NextRequest } from "next/server";
+import { verifyManusToken } from "@/lib/manusMagicLink";
 
 // 判断是否为 heraai.one 域名（包括 www.heraai.one）
 const isOneHost = (host?: string | null): boolean => {
@@ -65,6 +67,26 @@ const handler = async (req: NextRequest, context: any) => {
         clientId: githubClientId,
         clientSecret: githubClientSecret,
       }),
+      // Manus magic link: token in URL → verify JWT → sign in as that email (no password)
+      CredentialsProvider({
+        id: "manus-magic-link",
+        name: "Manus Magic Link",
+        credentials: {
+          token: { label: "Token", type: "text" },
+        },
+        async authorize(credentials) {
+          const token = credentials?.token;
+          if (!token || typeof token !== "string") return null;
+          try {
+            const payload = verifyManusToken(token);
+            const email = payload.email?.trim();
+            if (!email) return null;
+            return { id: email, email, name: email };
+          } catch {
+            return null;
+          }
+        },
+      }),
     ],
     callbacks: {
       async signIn({ user, account, profile }: any) {
@@ -85,7 +107,10 @@ const handler = async (req: NextRequest, context: any) => {
         }
         return session;
       },
-      async redirect() {
+      async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
+        // If signIn was called with callbackUrl (e.g. magic link → /applications), use it
+        if (url && url.startsWith("/")) return url;
+        if (url && url.startsWith(baseUrl)) return url;
         return "/profile";
       },
     },

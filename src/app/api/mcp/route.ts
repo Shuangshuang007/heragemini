@@ -16,11 +16,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchJobs } from '../../../services/jobFetchService';
-import { getUserProfile, upsertUserProfile, upsertJobApplication } from '../../../services/profileDatabaseService';
+import { getUserProfile, upsertUserProfile, upsertJobApplication, ensureProfileForEmail } from '../../../services/profileDatabaseService';
 import { connectToMongoDB, getJobById, queryJobsByIds, queryJobsWithFilters, transformMongoDBJobToFrontendFormat, updateJobFields } from '../../../services/jobDatabaseService';
 import { needsJobAnalysis, analyzeJobWithGPT } from '../../../services/jobAnalysisService';
 import { buildJobListPayload, buildJobDetailPayload } from '@/lib/jobPayloads';
 import { scoreJobWithJobMatch } from '@/lib/mcpJobMatch';
+import { signManusToken } from '@/lib/manusMagicLink';
 import { parseMessageWithGPT } from '../../../gpt-services/assistant/parseMessage';
 import { tailorResumeWithGPT } from '../../../gpt-services/resume/tailorResume';
 import { AgentKitPlanner } from '../../../lib/agentkit/planner';
@@ -724,6 +725,14 @@ export async function GET(request: NextRequest) {
         name: 'get_job_detail',
         description: '📄 GET JOB DETAIL - Fetch full job details by job_id. Use when user says "show me more about #3", "tell me more", "I want more details". First-round list returns list-layer only.',
       },
+      {
+        name: 'record_jobs_for_apply',
+        description: '📋 RECORD JOBS FOR APPLY - Record jobs the user selected (liked / for apply). Call when user says "I like #2 and #5" or "apply to 1, 3, 5". Ensures profile exists (email-only) and upserts each job to profile.applications. Do not use refine_recommendations for this.',
+      },
+      {
+        name: 'generate_magic_link',
+        description: '🔗 Generate a one-time login link for Hera /applications. Pass user_email; returns magic_link_url. Use when showing "Manage applications in Hera" so the user can click and land logged in (no password).',
+      },
     ],
     mode: HERA_MCP_MODE,
     status: 'healthy',
@@ -1282,6 +1291,7 @@ export async function POST(request: NextRequest) {
               employmentTypeStrict: { type: "boolean", description: "Optional. Set true when user says 'only full time', 'must be part time', etc. Then employmentType is applied as hard filter in DB query; otherwise employmentType is soft scoring only." },
               company: { type: "string", description: "Optional. When set, only return jobs at this company (company-only search). job_title/city can be omitted when company is provided." },
               sponsorship_only: { type: "boolean", description: "Optional. If true, only return jobs that offer or require sponsorship (workRights.sponsorship available/required)." },
+              posted_within_days: { type: "integer", minimum: 1, description: "Optional. Filter jobs posted within X days (e.g. 7 = last 7 days). Same as search_jobs and refine." },
               manus: {
                 type: "boolean",
                 default: true,
@@ -1363,7 +1373,8 @@ export async function POST(request: NextRequest) {
               company: { type: "string", description: "Optional. Same as recommend_jobs (e.g. only this company)." },
               workModeStrict: { type: "boolean", description: "Optional. When true, filter by workMode in DB (same as recommend_jobs)." },
               employmentTypeStrict: { type: "boolean", description: "Optional. When true, filter by employmentType in DB (same as recommend_jobs)." },
-              sponsorship_only: { type: "boolean", description: "Optional. Same as recommend_jobs (sponsorship only)." }
+              sponsorship_only: { type: "boolean", description: "Optional. Same as recommend_jobs (sponsorship only)." },
+              posted_within_days: { type: "integer", minimum: 1, description: "Optional. Filter jobs posted within X days (e.g. 7 = last 7 days). Same as recommend_jobs and search_jobs." }
             },
             required: ["session_id"],
             additionalProperties: false
@@ -2978,6 +2989,7 @@ export async function POST(request: NextRequest) {
             employmentTypeStrict,
             sponsorship_only,
             company: companyArg,
+            posted_within_days: postedWithinDaysArg,
             manus = true,  // 默认 true：job_cards 仅 list 层，详情用 get_job_detail(job_id)
           } = args;
           // Caller: args.source takes precedence; else X-Caller header (for Manus Customer API); else 'gpt'
@@ -3149,6 +3161,8 @@ export async function POST(request: NextRequest) {
           if (sponsorship_only === true) queryOptions.sponsorshipOnly = true;
           if (workModeStrict === true && workMode != null && workMode !== '') queryOptions.workMode = workMode;
           if (employmentTypeStrict === true && employmentType != null && employmentType !== '') queryOptions.employmentType = employmentType;
+          const recommendPostedDays = Number(postedWithinDaysArg || 0);
+          if (recommendPostedDays > 0) queryOptions.postedWithinDays = recommendPostedDays;
           // jobTitle, industry, skills, workMode (non-strict), employmentType (non-strict) are scoring-only, not in query
 
             t0 = Date.now();
@@ -3479,6 +3493,7 @@ export async function POST(request: NextRequest) {
             workModeStrict,
             employmentTypeStrict,
             sponsorship_only,
+            posted_within_days: refinePostedWithinDays,
             emphasis_on_preference = false,
           } = args;
           
@@ -3646,28 +3661,13 @@ export async function POST(request: NextRequest) {
             }
             
             // ========================================
-            // Manus 对齐：兴趣=JobSaved（liked → upsert jobSave）；不要=软删除（disliked → excluded: true）
+            // Manus 对齐：liked 不再在此写入 applications，改由 record_jobs_for_apply 负责；不要=软删除（disliked → excluded: true）
             // ========================================
             const refineUserEmail = String(args?.user_email || '').trim();
             if (refineUserEmail) {
-              if (liked_job_ids.length > 0) {
-                try {
-                  const likedJobsForSync = await queryJobsByIds(liked_job_ids);
-                  for (const job of likedJobsForSync) {
-                    const jid = job.id || job._id;
-                    if (!jid) continue;
-                    await upsertJobApplication(refineUserEmail, String(jid), {
-                      jobSave: { title: job.title || '', company: job.company || '' },
-                      jobUrl: job.url || job.jobUrl
-                    });
-                  }
-                  console.log('[refine] Synced liked to profile.applications:', liked_job_ids.length);
-                } catch (e) {
-                  console.warn('[refine] Sync liked to applications failed (non-blocking):', (e as Error)?.message);
-                }
-              }
               if (disliked_job_ids.length > 0) {
                 try {
+                  await ensureProfileForEmail(refineUserEmail);
                   for (const id of disliked_job_ids) {
                     await upsertJobApplication(refineUserEmail, String(id), { excluded: true });
                   }
@@ -3696,6 +3696,8 @@ export async function POST(request: NextRequest) {
             if (sponsorship_only === true) queryOptions.sponsorshipOnly = true;
             if (workModeStrict === true && effectiveWorkMode != null && effectiveWorkMode !== '') queryOptions.workMode = effectiveWorkMode;
             if (employmentTypeStrict === true && effectiveEmploymentType != null && effectiveEmploymentType !== '') queryOptions.employmentType = effectiveEmploymentType;
+            const refinePostedDays = Number(refinePostedWithinDays || 0);
+            if (refinePostedDays > 0) queryOptions.postedWithinDays = refinePostedDays;
             const { jobs: candidates } = await queryJobsWithFilters(queryOptions);
             
             console.log(`[refine] Found ${candidates.length} candidates after excluding ${EXCLUDE_SET.size}`);
@@ -3800,40 +3802,16 @@ export async function POST(request: NextRequest) {
 
             const results = transformed.slice(0, effectiveRefineLimit);
             
-            // 复用 JobMatch 模块：对最终 N 条做 GPT 打分，展示仍用 matchScore（experience 等），不展示 preference
-            const refineUserProfile = (user_profile && Object.keys(user_profile).length > 0)
-              ? {
-                  jobTitles: (user_profile as any).jobTitles?.length ? (user_profile as any).jobTitles : (effectiveJobTitle ? [effectiveJobTitle] : []),
-                  skills: (user_profile as any).skills ?? effectiveSkills,
-                  city: (user_profile as any).city ?? effectiveCity ?? null,
-                  seniority: (user_profile as any).seniority ?? '',
-                  openToRelocate: (user_profile as any).openToRelocate ?? false,
-                  careerPriorities: (user_profile as any).careerPriorities ?? [],
-                  expectedSalary: (user_profile as any).expectedSalary,
-                  currentPosition: (user_profile as any).currentPosition,
-                  expectedPosition: (user_profile as any).expectedPosition,
-                  employmentHistory: (user_profile as any).employmentHistory ?? [],
-                  workingRightsAU: (user_profile as any).workingRightsAU,
-                  workingRightsOther: (user_profile as any).workingRightsOther,
-                }
-              : {
-                  jobTitles: effectiveJobTitle ? [effectiveJobTitle] : [],
-                  skills: effectiveSkills,
-                  city: effectiveCity ?? null,
-                  seniority: '',
-                  openToRelocate: false,
-                  careerPriorities: [],
-                };
-            const jobsWithAnalysis = await Promise.all(
-              results.map((j: any) => scoreJobWithJobMatch(j, refineUserProfile))
-            );
-            const enrichedResults = jobsWithAnalysis.map((j: any, i: number) => ({
+            // refine = 快速重排：不再逐条调 GPT JobMatch（50 条 = 50 次 GPT 会拖到几十秒）。仅用已有 match_score + preference_score。
+            const enrichedResults = results.map((j: any) => ({
               ...j,
-              preference_score: results[i].preference_score,
-              personalized_score: results[i].preference_score,
+              matchScore: (j.match_score != null && typeof j.match_score === 'number') ? j.match_score : 50,
+              matchAnalysis: undefined,
+              preference_score: j.preference_score,
+              personalized_score: j.preference_score,
             }));
 
-            console.log(`[refine] Returning ${enrichedResults.length} refined recommendations`);
+            console.log(`[refine] Returning ${enrichedResults.length} refined recommendations (local sort only, no per-job GPT)`);
 
             // ========================================
             // 更新 AgentKit Memory（同步，返回前写入）
@@ -5245,8 +5223,9 @@ export async function POST(request: NextRequest) {
             }
             const appForJob = profileResolved?.applications?.find((a: any) => a.jobId === job_id);
             const resume_url = appForJob?.resumeTailor?.downloadUrl ?? null;
-            // Manus 对齐：prepare 被调即视为「开始申请」，写入 applicationStartedBy + jobSave
+            // Manus 对齐：prepare 被调即视为「开始申请」，写入 applicationStartedBy + jobSave；先 ensure profile（含直接 auto apply 无 profile 场景）
             try {
+              await ensureProfileForEmail(resolvedEmail);
               await upsertJobApplication(resolvedEmail, job_id, {
                 jobSave: { title: job.title || '', company: job.company || '' },
                 jobUrl: job.url || job.jobUrl,
@@ -5317,6 +5296,7 @@ export async function POST(request: NextRequest) {
           }
           const applicationStatus = applicationStatusArg === "submitted" ? "Application Submitted" : "Application Failed";
           try {
+            await ensureProfileForEmail(recUserEmail);
             await upsertJobApplication(recUserEmail, recJobId, {
               applicationStatus,
               appliedVia: appliedViaArg === "manus" ? "manus" : "hera_web",
@@ -5418,9 +5398,10 @@ export async function POST(request: NextRequest) {
                 }
               }, { "X-MCP-Trace-Id": traceId });
             }
-            // Show more = interest: sync to profile.applications (same as liked). Only explicit "don't want" (disliked) excludes.
+            // Show more = interest: sync to profile.applications. Ensure Manus-originated profile (email-only) exists first.
             if (userEmail) {
               try {
+                await ensureProfileForEmail(userEmail);
                 await upsertJobApplication(userEmail, jobId, {
                   jobSave: { title: detail.title || "", company: detail.company || "" },
                   jobUrl: detail.url || (frontendJob as any).jobUrl || (frontendJob as any).url || "",
@@ -5447,6 +5428,115 @@ export async function POST(request: NextRequest) {
                 content: [{ type: "text", text: `Failed to get job detail: ${e?.message || e}` }],
                 isError: false,
                 error: "get_failed"
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+        }
+
+        // ============================================
+        // Tool: record_jobs_for_apply (user selected jobs for apply / liked)
+        // ============================================
+        else if (name === "record_jobs_for_apply") {
+          const traceId = crypto.randomUUID();
+          const recEmail = String(args?.user_email ?? "").trim();
+          const jobIds = Array.isArray(args?.job_ids) ? args.job_ids.map((id: any) => String(id)) : [];
+          if (!recEmail) {
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: "Missing user_email." }],
+                isError: false,
+                error: "missing_params"
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+          if (jobIds.length === 0) {
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: "Missing or empty job_ids." }],
+                isError: false,
+                error: "missing_params"
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+          try {
+            await ensureProfileForEmail(recEmail);
+            const jobs = await queryJobsByIds(jobIds);
+            let synced = 0;
+            for (const job of jobs) {
+              const jid = job.id || job._id;
+              if (!jid) continue;
+              await upsertJobApplication(recEmail, String(jid), {
+                jobSave: { title: job.title || "", company: job.company || "" },
+                jobUrl: job.url || job.jobUrl || ""
+              });
+              synced++;
+            }
+            console.log("[record_jobs_for_apply] Synced", synced, "jobs to profile.applications for", recEmail);
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: `Recorded ${synced} job(s) for apply.` }],
+                isError: false,
+                synced_count: synced
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          } catch (e: any) {
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: `Failed to record jobs: ${e?.message || e}` }],
+                isError: false,
+                error: "record_failed"
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+        }
+
+        // ============================================
+        // Tool: generate_magic_link (Manus → Hera 免登链接)
+        // ============================================
+        else if (name === "generate_magic_link") {
+          const traceId = crypto.randomUUID();
+          const magEmail = String(args?.user_email ?? "").trim();
+          if (!magEmail) {
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: "Missing user_email." }],
+                isError: false,
+                error: "missing_params"
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          }
+          try {
+            const jwt = signManusToken(magEmail);
+            const baseUrl = process.env.HERA_DOMAIN || process.env.NEXT_PUBLIC_BASE_URL || "https://www.heraai.net.au";
+            const base = baseUrl.replace(/\/$/, "");
+            const magicLinkUrl = `${base}/applications?manus_token=${encodeURIComponent(jwt)}`;
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: `Magic link generated for ${magEmail}. Use magic_link_url for "Manage applications in Hera" button.` }],
+                isError: false,
+                magic_link_url: magicLinkUrl
+              }
+            }, { "X-MCP-Trace-Id": traceId });
+          } catch (e: any) {
+            return json200({
+              jsonrpc: "2.0",
+              id: body.id ?? null,
+              result: {
+                content: [{ type: "text", text: `Failed to generate magic link: ${e?.message || e}` }],
+                isError: false,
+                error: "generate_failed"
               }
             }, { "X-MCP-Trace-Id": traceId });
           }
